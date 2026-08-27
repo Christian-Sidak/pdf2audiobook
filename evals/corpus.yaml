@@ -1,0 +1,77 @@
+version: 1
+defaults:
+  pass_k: 3
+  wer_threshold: 0.10
+  sec_per_char: {min: 0.045, max: 0.14}
+  silence_tolerance_ms: 150
+  lufs_target: -18.0
+  lufs_tolerance: 1.5
+  true_peak_max: -3.0
+  dict_word_ratio_min: 0.85
+  garbage_char_density_max: 0.02
+  header_page_fraction: 0.2
+  faithfulness_min_similarity: 60
+  faithfulness_min_words: 8
+  chapter_text_coverage_min: 0.97
+
+  wer_sample: 200
+documents:
+- id: man_eating_lions_of_tsavo_patterson_1925
+  pdf: library/Man-Eating Lions of Tsavo (Patterson, 1925).pdf
+  kind: book
+  language: en
+  tier: full
+  golden:
+    body_text: evals/golden/man_eating_lions_of_tsavo_patterson_1925/body.txt
+    chapters: evals/golden/man_eating_lions_of_tsavo_patterson_1925/chapters.json
+  expect:
+    chapter_count: 1
+    has_embedded_toc: false
+    ocr_expected_pages: []
+  assertions:
+    must_contain:
+    - id: span_roosevelt
+      text: 'A late great President of the United States, that man with the wonderful personality—Theodore
+        Roosevelt—has put it on record that "the story of the ManEaters of Tsavo is by far the most remarkable
+        account of which we have any record ;" while that veteran big game hunter and African pioneer,
+        Selous, '
+      note: PD text (1925 Field Museum leaflet); source 
+        https://archive.org/details/maneatinglionsof07patt
+- id: arxiv_2201_00650
+  pdf: "library/2201.00650.pdf"
+  kind: book
+  language: en
+  tier: smoke
+  expect:
+    chapter_count:
+    has_embedded_toc: true
+    ocr_expected_pages: []
+    body_dict_word_ratio_min: 0.65
+  assertions:
+    must_contain: []
+    must_not_contain: []
+    keep_hyphens: []
+    deletion_allowlist: []
+  skip_checks:
+  - no_footnotes_inline
+  - paragraph_reflow
+
+- id: trial_of_joan_of_arc
+  pdf: "library/Trial-of-Joan-of-Arc.pdf"
+  kind: scan
+  language: en
+  tier: smoke
+  expect:
+    chapter_count:
+    has_embedded_toc: false
+    ocr_expected_pages: scan
+    body_dict_word_ratio_min: 0.65
+    wer_sample: 0
+  assertions:
+    must_contain: []
+    must_not_contain: []
+    keep_hyphens: []
+    deletion_allowlist: []
+  skip_checks:
+  - number_style
+

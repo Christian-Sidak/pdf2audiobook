@@ -1,0 +1,54 @@
+# Code only — no assets, no generated output.
+
+# Python
+__pycache__/
+*.pyc
+.DS_Store
+
+# Source inputs (large; downloaded/regenerable)
+library/*
+*.pdf
+*.webm
+*.mp3
+*.opus
+*.m4a
+*.flac
+*.epub
+
+# Voice references and any audio
+voices/
+piper_voices/
+*.wav
+*.m4b
+*.onnx
+
+# Generated / per-run
+artifacts/
+output/
+audiobook_output/
+evals/reports/
+evals/.cache/
+evals/review_queue.jsonl
+scripts/vast/.vast_instance
+scripts/vast/.tunnel_pid
+
+# Local Claude config (skills ship; local settings don't)
+.claude/*
+!.claude/skills/
+scripts/ftd_*
+scripts/*_supervise.sh
+
+# Music beds (generated per-book)
+music/
+
+# Track hand-written chapter sidecars even though library/ is ignored
+!library/*.chapters.yaml
+scripts/vast/*.log
+scripts/vast/.boot*
+scripts/vast/.vast_instance*
+scripts/vast/.up*
+scripts/vast/.watchdog*
+
+# README samples (small mp3s allowed here only)
+!samples/*.mp3
+!samples/*.mp4

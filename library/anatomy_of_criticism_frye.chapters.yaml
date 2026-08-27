@@ -1,0 +1,11 @@
+# Manual chapter map for Anatomy of Criticism (Princeton 2000 printing).
+# Display typography defeats heuristics (homoglyph OCR in title fonts,
+# subtitles set smaller than body text), so the structure is declared.
+chapters:
+  - {title: "Polemical Introduction", start_page: 20}
+  - {title: "First Essay. Historical Criticism: Theory of Modes", start_page: 50}
+  - {title: "Second Essay. Ethical Criticism: Theory of Symbols", start_page: 88}
+  - {title: "Third Essay. Archetypal Criticism: Theory of Myths", start_page: 148}
+  - {title: "Fourth Essay. Rhetorical Criticism: Theory of Genres", start_page: 260}
+  - {title: "Tentative Conclusion", start_page: 358}
+  - {title: "Notes, Glossary, and Index", start_page: 372, matter: back}

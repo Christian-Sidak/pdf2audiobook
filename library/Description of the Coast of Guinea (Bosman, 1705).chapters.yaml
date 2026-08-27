@@ -1,0 +1,31 @@
+# Manual chapter map for the 1705 Bosman scan. The OCR mangles the running
+# heads ("Let. VIL Gold Coaft") badly enough that heading detection produced
+# junk chapters and let the spaced-out INDEX pages through as body.
+# start_page is 1-indexed; letter start pages verified against the LETTER
+# headings in the page text.
+chapters:
+  - {title: "The Author's Preface", start_page: 15}
+  - {title: "The Contents", start_page: 19, matter: front}
+  - {title: "Letter I. Of the Gold Coast in General, and the Country of Axim", start_page: 21}
+  - {title: "Letter II. Describing the Ante Country", start_page: 33}
+  - {title: "Letter III", start_page: 46}
+  - {title: "Letter IV. Containing a Description of Fetu", start_page: 67}
+  - {title: "Letter V. Describing the Country of Acron", start_page: 86}
+  - {title: "Letter VI", start_page: 100}
+  - {title: "Letter VII", start_page: 116}
+  - {title: "Letter VIII. The Insalubrity of the Coast", start_page: 132}
+  - {title: "Letter IX. Of the Natural Disposition and Manners of the Negroes", start_page: 144}
+  - {title: "Letter X. Describing the Several Religions of the Coast", start_page: 173}
+  - {title: "Letter XI. Of the Government of the Negroes", start_page: 190}
+  - {title: "Letter XII. Of the Negroes' Manner of Marrying", start_page: 224}
+  - {title: "Letter XIII. How the Negroes Deport Themselves", start_page: 246}
+  - {title: "Letter XIV. Describing the Tame and Wild Quadrupeds", start_page: 262}
+  - {title: "Letter XV. Treating First of the Feathered Kind", start_page: 291}
+  - {title: "Letter XVI. Treating of Trees and Other Plants", start_page: 318}
+  - {title: "Letter XVII. By Way of Supplement to the Former", start_page: 344}
+  - {title: "Letter XVIII. Of the Slave Coast", start_page: 357}
+  - {title: "Letter XIX", start_page: 389}
+  - {title: "Letter XX. Of the Kingdom of Fida", start_page: 429}
+  - {title: "Letter XXI. A Description of Rio Formosa, or the Kingdom of Great Benin", start_page: 465}
+  - {title: "Letter XXII. The Author's Departure from Elmina; the Tooth and Grain Coast", start_page: 511}
+  - {title: "Index", start_page: 536, matter: back}

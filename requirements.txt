@@ -1,0 +1,39 @@
+# pip install -r requirements.txt
+# Plus manual steps in README.md: qwen-tts (cloned voices), deepfilternet
+# (voice de-noise), ollama model pull, and ffmpeg/ocrmypdf system installs.
+
+# PDF extraction
+pymupdf>=1.24.0
+
+# Numerics / audio IO
+numpy>=1.26
+soundfile>=0.12
+
+# PyTorch — pin the pair; DeepFilterNet needs the torchaudio.backend shim
+# (see README) on torchaudio 2.x where the module was removed.
+torch>=2.2,<3
+torchaudio>=2.2,<3
+
+# ASR / QC
+mlx-whisper>=0.4.0
+
+# Voice activity detection (room-tone harvesting)
+silero-vad>=5.1
+
+# Voice reference intake & QC (voice-grab / voice-distill)
+yt-dlp>=2025.1.1
+librosa>=0.10
+resemblyzer>=0.1.3
+
+# TTS — draft (Kokoro, pip) and cloned (Qwen3-TTS, repo install per README)
+kokoro>=0.9
+
+# Text pipeline / evals
+pydantic>=2.0
+rapidfuzz>=3.0
+ruamel.yaml>=0.18
+jsonschema>=4.0
+
+# CLI & UI
+click>=8.1.0
+rich>=13.0.0

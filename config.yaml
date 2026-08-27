@@ -1,0 +1,91 @@
+# Central pipeline configuration. Every tunable knob lives here;
+# evals/corpus.yaml holds the eval-side thresholds and per-document seeds.
+
+paths:
+  library: library
+  artifacts: artifacts   # per-stage intermediates (gitignored)
+  output: output         # finished audiobooks: book.m4b + chapters/ + manifest.json
+
+extraction:
+  min_chars_per_page: 100   # below this a page counts as un-extracted (scan)
+  ocr_doc_fraction: 0.3     # this fraction of near-empty pages triggers whole-doc OCR
+
+structural:
+  header_zone: 0.12         # top fraction of page height treated as header zone
+  footer_zone: 0.90         # bottom fraction start for footer zone
+  repeat_min_count: 3       # margin line repeats before it counts as running header
+  footnote_size_ratio: 0.90 # fonts below this fraction of body size are note-sized
+
+narration:
+  ollama_url: http://localhost:11434
+  rewrite_model: qwen:latest
+  judge_model: qwen:latest
+  window_paragraphs: 6      # paragraphs per LLM rewrite call
+  window_retries: 2         # in-stage retries per window
+  max_segment_chars: 900
+
+  headings:
+    chapter: announce
+    section: pause
+pause_policy:               # seconds of literal silence inserted by the assembler
+  chapter_heading: {before: 2.0, after: 1.5}
+  section_heading: {before: 1.2, after: 0.8}
+  paragraph: {before: 0.5, after: 0.0}
+  blockquote: {before: 0.7, after: 0.7}
+  sentence:
+    gap: 0.55
+
+segment_length_limits:      # characters, [min, max] per segment type
+  chapter_heading: [1, 200]
+  section_heading: [1, 200]
+  paragraph: [1, 900]
+  blockquote: [1, 900]
+
+tts:
+  default_engine: kokoro
+  sample_rate: 24000
+  batch: 1                  # segments per batched generation call
+  engines:
+    kokoro:
+      voice: am_michael
+      speed: 1.0
+    qwen3tts:
+      model_id: Qwen/Qwen3-TTS-12Hz-1.7B-Base
+      fast_model_id: Qwen/Qwen3-TTS-12Hz-0.6B-Base
+      reference_wav:        # set per build with --voice
+
+      tempo: 1.0
+      target_wpm: 130
+      sentence_pause: 0.55
+  collapse_guard:
+    tokens_per_sec: 13.5
+    cap_factor: 4.0
+    expected_wpm: 150
+    escape_threshold: 3.5
+    adjudicate_after: 2
+    end_decay_ratio: 0.35
+mastering:
+  lufs_target: -18.0
+  true_peak_max_dbtp: -3.0  # ACX: peaks at or below -3 dB (sample peak)
+  aac_bitrate: 96k
+  room_tone_db: -58.0
+  head_tone_s: 0.75
+  tail_tone_s: 2.0
+  fade_in_ms: 24
+  fade_tail_ms: 12
+  per_take:
+    enabled: true
+    target_rms_dbfs: -20.0
+    max_gain_db: 16.0
+    min_gain_db: -12.0
+    peak_ceiling_dbfs: -0.3
+    voiced_floor_dbfs: -45.0
+    voiced_rel_db: 25.0
+    frame_ms: 20
+    failed_take_floor_dbfs: -50.0
+room_tone:
+  mode: harvest
+  source: auto
+  guard_ms: 500
+  level_db:
+silence_tolerance_ms: 60

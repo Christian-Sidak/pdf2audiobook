@@ -1,0 +1,6 @@
+# Manual chapter map for the 1925 Field Museum leaflet. Single-essay booklet:
+# no outline, so heuristics lumped museum front matter (leaflet price list,
+# imprint) into the body. Pages 1-6 are covers/imprint; 51+ are plates.
+chapters:
+  - {title: "The Man-Eating Lions of Tsavo", start_page: 7}
+  - {title: "Plates", start_page: 51, matter: back}
