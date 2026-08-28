@@ -12,16 +12,50 @@ commute.
 
 **Why it's different:**
 
+A converter reads text aloud. An audiobook is a product. Listeners notice
+things a converter never checks: the tone of the room under the pauses,
+pacing that fits the text, a narrator whose voice on page 300 matches page
+1, and the hundreds of small failures that OCR and TTS produce over six
+hours of audio. A 100k-word book is also thousands of TTS calls, so cost
+and re-render discipline are part of the design, not an afterthought.
+
 - **Open-source models end to end**: Qwen3-TTS and Kokoro for speech, a
   local Qwen via Ollama for narration and judging, Whisper for QC. No API
   keys, no per-word fees: **free if you have a Mac with Apple Silicon or a
   GPU.** Your books never leave your machine.
-- **It takes QC seriously.** PDF transcription and TTS both fail constantly:
-  OCR junk mid-sentence, running headers read aloud, stutters, skipped
-  words, voice drift, clipped phonemes. This pipeline treats those as
-  first-class problems: every take is transcribed back and judged, every
-  stage is gated by evals, and failures are re-rendered, adjudicated, or
-  surfaced for a human ear instead of shipped.
+
+**QC is the product.** PDF transcription and TTS both fail constantly:
+OCR junk mid-sentence, running headers read aloud, stutters, skipped
+words, voice drift, clipped phonemes. Every one of those is treated as a
+first-class engineering problem:
+
+- **Every take is heard before it ships.** Each rendered segment is
+  transcribed back with Whisper and judged by a local LLM against the
+  source text, catching stutters, skips, and invented words.
+- **Every stage is gated by evals.** A committed baseline turns narration
+  quality into a regression suite: a change that degrades extraction,
+  chapterization, or takes fails the build like a broken test.
+- **Failures are repaired, not shipped.** Bad takes re-render on a retry
+  budget; stubborn ones get their text adjudicated for speakability (a
+  sentence split, a respelled hard word) instead of mangling the author's
+  prose. Whatever still fails is surfaced for a human ear.
+- **Voice drift is measured.** Every take's speaker embedding is compared
+  against the render's own voice centroid, so the narrator at the end of
+  the book is the narrator from the first chapter.
+- **Room tone is engineered.** Takes render dry and are leveled onto a
+  continuous room-tone bed, so pauses sound like a recording room
+  breathing, not digital silence spliced between files.
+- **Pacing is a config value, not a re-record.** Pauses, heading air, and
+  loudness live in the assembly stage, so re-pacing an entire book takes
+  seconds and re-renders nothing.
+- **Prosody comes from the reference, so the reference is engineered
+  too.** voice-grab scouts a clean single-speaker window from real audio;
+  voice-distill then banks a generated reference that provably ends on a
+  complete sentence, because a mid-thought reference makes every take
+  hallucinate a continuation.
+- **Cost is managed by construction.** Takes are content-addressed and
+  immutable: killing a five-hour render costs nothing, and a text fix
+  re-renders only the changed segments.
 
 > 🔊 **Hear it**: the opening of *The Velveteen Rabbit* (1922, public
 > domain), narrated by a voice cloned from Dylan Thomas (d. 1953), mastered
