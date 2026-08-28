@@ -23,6 +23,15 @@ first-class engineering problem:
 - **Every stage is gated by evals.** A committed baseline turns narration
   quality into a regression suite: a change that degrades extraction,
   chapterization, or takes fails the build like a broken test.
+- **The text is sanitized before it is ever spoken.** Running headers,
+  footers, page numbers, and hyphenated line breaks are stripped and the
+  prose reflowed, so the narrator never reads "24 CHAPTER TWO" aloud in
+  the middle of a sentence.
+- **Numbers and titles are spoken the way a narrator would say them.**
+  The local LLM verbalizes numerals, dates, and honorifics ("Dr.",
+  "1925") into words, dedupes repeated chapter titles, and splits
+  sentences without breaking on abbreviations, with deterministic
+  validation and a mechanical fallback behind every LLM call.
 - **Failures are repaired, not shipped.** Bad takes re-render on a retry
   budget; stubborn ones get their text adjudicated for speakability (a
   sentence split, a respelled hard word) instead of mangling the author's
