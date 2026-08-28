@@ -10,6 +10,8 @@ takes a scanned PDF and produces a mastered M4B with chapters, cover art, and
 a narrator voice of your choosing, so these rare works can ride along on a
 commute.
 
+## Why is this different from hundreds of other TTS projects?
+
 **QC is the product.** PDF transcription and TTS both fail constantly:
 OCR junk mid-sentence, running headers read aloud, stutters, skipped
 words, voice drift, clipped phonemes. Every one of those is treated as a
