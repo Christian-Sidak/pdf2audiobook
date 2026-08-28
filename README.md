@@ -41,7 +41,11 @@ first-class engineering problem:
   hallucinate a continuation.
 - **Cost is managed by construction.** Takes are content-addressed and
   immutable: killing a five-hour render costs nothing, and a text fix
-  re-renders only the changed segments.
+  re-renders only the changed segments. Everything runs on free open-source
+  models; the same loop on API pricing (Claude-class tokens for narration
+  and judging plus per-character commercial TTS) would be several hundred
+  dollars per audiobook, times every wasted run while you tune parameters
+  and voice references.
 
 > 🔊 **Hear it**: the opening of *The Velveteen Rabbit* (1922, public
 > domain), narrated by a voice cloned from Dylan Thomas (d. 1953), mastered
