@@ -1,4 +1,4 @@
-# pdf2audiobook
+# 🎧 pdf2audiobook
 
 **Turn any PDF into a finished, QC-gated audiobook, fully local, on Apple Silicon.**
 
@@ -10,7 +10,7 @@ takes a scanned PDF and produces a mastered M4B with chapters, cover art, and
 a narrator voice of your choosing, so these rare works can ride along on a
 commute.
 
-## Why is this different from hundreds of other TTS projects?
+## 🎯 Why is this different from hundreds of other TTS projects?
 
 **QC is the product.** PDF transcription and TTS both fail constantly:
 OCR junk mid-sentence, running headers read aloud, stutters, skipped
@@ -56,7 +56,7 @@ first-class engineering problem:
 
 https://github.com/user-attachments/assets/63867849-f069-473f-911e-2e3483a3e07d
 
-## How it works
+## ⚙️ How it works
 
 ```mermaid
 flowchart LR
@@ -89,7 +89,7 @@ assembly, so pacing, tone, and level changes re-run stage 6 only
 (`main.py reassemble`), with zero re-recording. Killing a 5-hour render
 costs nothing; it resumes from cache.
 
-## Voices
+## 🎙️ Voices
 
 ```bash
 # Find + bank a narrator reference from any YouTube interview
@@ -117,7 +117,7 @@ demo sample uses a reference from Dylan Thomas (d. 1953) reading
 public-domain text. Recordings, reference audio, and source PDFs all stay
 local.
 
-## Quickstart
+## 🚀 Quickstart
 
 ```bash
 pip install -r requirements.txt
@@ -141,7 +141,7 @@ generation; `main.py cover` embeds any square PNG), `transformers`
 (MusicGen intro beds), `scripts/vast/` (remote CUDA renders on vast.ai with
 push/render/status/pull control plane).
 
-## Driving it with Claude
+## 🤖 Driving it with Claude
 
 The repo ships Claude Code skills in `.claude/skills/`:
 
@@ -163,14 +163,14 @@ The repo ships Claude Code skills in `.claude/skills/`:
 LLM-judgment-with-deterministic-fallback, never rewriting the author's
 prose).
 
-## Eval corpus
+## 🧪 Eval corpus
 
 The committed corpus and golden files use public-domain texts (Patterson's
 1925 *Man-Eating Lions of Tsavo* leaflet, with assertions that survive OCR
 hyphen breaks, running headers, and footnote interleaving). Point
 `evals/corpus.yaml` at your own library; PDFs stay untracked.
 
-## License
+## 📜 License
 
 [PolyForm Noncommercial 1.0.0](LICENSE): free for personal, research, and
 other noncommercial use. For commercial licensing, open a GitHub issue.
