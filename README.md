@@ -26,9 +26,9 @@ commute.
 > 🔊 **Hear it**: the opening of *The Velveteen Rabbit* (1922, public
 > domain), narrated by a voice cloned from Dylan Thomas (d. 1953), mastered
 > on the pipeline's room-tone bed, cover art generated and composited by the
-> cover stage:
+> cover stage. Click to play:
 
-https://github.com/Christian-Sidak/pdf2audiobook/raw/main/samples/velveteen_rabbit.mp4
+[![The Velveteen Rabbit sample, click to play](samples/velveteen_rabbit_poster.png)](https://github.com/Christian-Sidak/pdf2audiobook/raw/main/samples/velveteen_rabbit.mp4)
 
 ## How it works
 
@@ -125,6 +125,13 @@ The repo ships Claude Code skills in `.claude/skills/`:
   extraction preview, chapter sidecars, QC-loop triage (including
   listen-and-waive for ASR false positives and snip-don't-reroll for onset
   artifacts), mastering, cover art, delivery.
+- **`/check-build`**: live progress and ETA for a running render, stall
+  diagnosis, safe resume (takes are cached), and review-queue triage for a
+  halted build.
+- **`/tune-audiobook`**: iterate pacing, pauses, room tone, and loudness on
+  a finished book without re-rendering a take (stage-6 reassembly loop).
+- **`/run-evals`**: run the eval matrix, gate against the committed
+  baseline, interpret regressions, and update the baseline deliberately.
 
 `CLAUDE.md` encodes the project's working doctrine (immutable takes,
 LLM-judgment-with-deterministic-fallback, never rewriting the author's

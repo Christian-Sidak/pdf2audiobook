@@ -19,5 +19,7 @@
 - **Chapter structure overrides live in `library/<book>.chapters.yaml`**
   sidecars — never hand-edit derived artifacts to fix structure.
 - Skills in `.claude/skills/` document the full workflows: `grab-voice`
-  (find → scout → bank → QC → distill a narrator voice) and
-  `build-audiobook` (PDF → M4B end to end).
+  (find → scout → bank → QC → distill a narrator voice), `build-audiobook`
+  (PDF → M4B end to end), `check-build` (monitor/resume/triage renders),
+  `tune-audiobook` (assembly-time pacing and mastering iteration), and
+  `run-evals` (eval matrix and baseline discipline).

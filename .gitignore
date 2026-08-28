@@ -52,3 +52,4 @@ scripts/vast/.watchdog*
 # README samples (small mp3s allowed here only)
 !samples/*.mp3
 !samples/*.mp4
+!samples/*.png
