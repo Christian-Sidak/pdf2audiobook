@@ -10,20 +10,6 @@ takes a scanned PDF and produces a mastered M4B with chapters, cover art, and
 a narrator voice of your choosing, so these rare works can ride along on a
 commute.
 
-**Why it's different:**
-
-A converter reads text aloud. An audiobook is a product. Listeners notice
-things a converter never checks: the tone of the room under the pauses,
-pacing that fits the text, a narrator whose voice on page 300 matches page
-1, and the hundreds of small failures that OCR and TTS produce over six
-hours of audio. A 100k-word book is also thousands of TTS calls, so cost
-and re-render discipline are part of the design, not an afterthought.
-
-- **Open-source models end to end**: Qwen3-TTS and Kokoro for speech, a
-  local Qwen via Ollama for narration and judging, Whisper for QC. No API
-  keys, no per-word fees: **free if you have a Mac with Apple Silicon or a
-  GPU.** Your books never leave your machine.
-
 **QC is the product.** PDF transcription and TTS both fail constantly:
 OCR junk mid-sentence, running headers read aloud, stutters, skipped
 words, voice drift, clipped phonemes. Every one of those is treated as a
