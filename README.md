@@ -26,9 +26,9 @@ commute.
 > 🔊 **Hear it**: the opening of *The Velveteen Rabbit* (1922, public
 > domain), narrated by a voice cloned from Dylan Thomas (d. 1953), mastered
 > on the pipeline's room-tone bed, cover art generated and composited by the
-> cover stage. Click to play:
+> cover stage:
 
-[![The Velveteen Rabbit sample, click to play](samples/velveteen_rabbit_poster.png)](https://github.com/Christian-Sidak/pdf2audiobook/raw/main/samples/velveteen_rabbit.mp4)
+https://github.com/user-attachments/assets/63867849-f069-473f-911e-2e3483a3e07d
 
 ## How it works
 
