@@ -244,6 +244,60 @@ def voice_distill(name: str, text, n: int):
     sys.exit(0 if distill_reference(name, text, n) else 1)
 
 
+@cli.command()
+@click.argument("book", required=False)
+@click.option("--json", "as_json", is_flag=True, help="emit JSON (one array) instead of lines")
+@click.option("--watch", is_flag=True, help="refresh every 15s")
+def progress(book: str | None, as_json: bool, watch: bool):
+    """Real build progress derived from artifacts and logs: script windows,
+    takes with pace and ETA, QC attempt tallies, halts, output. Same data
+    as the web dashboard (`main.py dashboard`)."""
+    import json as _json
+    import time as _time
+
+    from pipeline.progress import all_progress
+
+    def _emit():
+        rows = all_progress(book)
+        if as_json:
+            print(_json.dumps(rows, indent=1))
+            return
+        for b in rows:
+            rr, sc = b["render"], b["script"]
+            pct = int(b["fraction"] * 100)
+            bar = "█" * (pct // 4) + "░" * (25 - pct // 4)
+            if "script" in b["phase"]:
+                detail = f"windows {sc['windows_done']}/{sc['windows_total']}"
+            elif rr["segments"]:
+                detail = f"takes {rr['takes']:,}/{rr['segments']:,}"
+                if rr["pace_per_hour"]:
+                    detail += f"  {rr['pace_per_hour']}/h  ETA {rr['eta_hours']:.1f}h"
+            else:
+                detail = ""
+            qc = b["qc"]["attempts"][-1] if b["qc"]["attempts"] else None
+            qc_s = f"  qc s{qc['stage']} a{qc['attempt']}: {qc['total']} flags" if qc else ""
+            console.print(f"[bold]{b['title'][:40]:40}[/] {bar} {pct:3d}%  [cyan]{b['phase']}[/]  {detail}{qc_s}")
+            if b["last_event"]:
+                console.print(f"{'':40} [dim]{b['last_event'][:90]}[/]")
+
+    if watch:
+        while True:
+            console.clear(); console.print(f"[dim]{_time.strftime('%H:%M:%S')} refreshes every 15s[/]"); _emit(); _time.sleep(15)
+    _emit()
+
+
+@cli.command()
+@click.option("--port", default=8787, show_default=True)
+@click.option("--host", default="0.0.0.0", show_default=True, help="0.0.0.0 = reachable on the LAN (phone)")
+def dashboard(port: int, host: str):
+    """Serve a small auto-refreshing web page of build progress for every
+    book (http://localhost:PORT, or this Mac's LAN address from a phone)."""
+    from pipeline.progress import serve
+
+    console.print(f"[green]dashboard:[/] http://localhost:{port}  (JSON at /api; ctrl-c to stop)")
+    serve(port, host)
+
+
 @cli.command("repair-splits")
 @click.argument("book")
 @click.option("--dry-run", is_flag=True, help="report joins without writing the narration")
