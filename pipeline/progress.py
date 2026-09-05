@@ -166,10 +166,17 @@ def book_progress(bdir: Path) -> dict:
                 t0 = narr.stat().st_mtime
                 this = [m for m in mt if m >= t0 - 1]
                 takes = min(len(this), seg_total) if seg_total else len(this)
-            recent = sum(1 for m in mt if now - m < 1800)
-            pace = recent * 2
+            # Pace over the last 30 minutes, or over the render's whole life
+            # when it is younger than that (a fresh render showed 6/h and a
+            # 755-hour ETA after its first minute).
             if mt:
                 last_take = max(mt)
+                first = min(m for m in mt if m >= (narr.stat().st_mtime - 1)) if any(m >= narr.stat().st_mtime - 1 for m in mt) else min(mt)
+                window = min(1800.0, max(60.0, now - first))
+                recent = sum(1 for m in mt if now - m < window)
+                pace = int(recent * 3600 / window) if recent >= 2 else 0
+            else:
+                pace = 0
             if pace and seg_total > takes:
                 eta_h = (seg_total - takes) / pace
 
