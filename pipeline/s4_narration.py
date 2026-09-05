@@ -730,7 +730,7 @@ def _map_label_like(text: str) -> bool:
 # sentence are left to the LLM; only the bare, whole-segment form is caught.
 _YEAR_WORDS = r"(?:eighteen|nineteen|twenty)(?:[\s-]+[a-z]+){1,3}"
 _BARE_CITATION = re.compile(
-    rf"^\(\s*[A-Z][\w.'’-]+(?:\s+(?:and|&|et al\.?)\s+[A-Z][\w.'’-]+)*,?\s+"
+    rf"^\(\s*[A-Z][\w.'’-]+(?:\s+(?:and|&)\s+[A-Z][\w.'’-]+)*(?:\s+et al\.?)?,?\s+"
     rf"(?:\d{{4}}[a-z]?|{_YEAR_WORDS})[^)]{{0,80}}\)\s*[.;,]?$")
 
 
