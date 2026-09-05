@@ -332,11 +332,30 @@ def run(book: BookCtx) -> Path:
     # Cross-page re-flow: a page ending mid-sentence continues onto the next.
     # Look back past pages whose content was entirely removed (headers,
     # footnotes) so continuity survives them.
+    # Hard breaks the flow must never cross: a page that a chapters.yaml
+    # sidecar declares as a chapter start, and a page following a truly
+    # blank page (no text at all, as opposed to a page emptied by header or
+    # footnote removal). Joothan 2026-09-05: the Preface ended on an
+    # unpunctuated signature line, page 17 was blank, and the Introduction's
+    # opening paragraph was glued onto the Preface and narrated there.
+    blank_pages = {p["number"] for p in pages if not (p.get("text") or "").strip()}
+    hard_starts: set[int] = set()
+    sidecar = book.pdf_path.with_suffix(".chapters.yaml")
+    if sidecar.exists():
+        try:
+            from ruamel.yaml import YAML
+            spec = YAML(typ="safe").load(sidecar.open()) or {}
+            hard_starts = {int(e["start_page"]) - 1 for e in (spec.get("chapters") or [])}
+        except Exception:
+            hard_starts = set()
+
     flowed: list[tuple[int, list[str]]] = []
     for number, paras in page_paragraphs:
         if paras:
             prev_paras = next((pp for _, pp in reversed(flowed) if pp), None)
-            if prev_paras and _continues(prev_paras[-1], paras[0], cross_page=True):
+            crosses_break = number in hard_starts or (number - 1) in blank_pages
+            if (prev_paras and not crosses_break
+                    and _continues(prev_paras[-1], paras[0], cross_page=True)):
                 prev_paras[-1] = _join_hyphen_aware(prev_paras[-1], paras[0], dictionary)
                 paras = paras[1:]
         flowed.append((number, paras))
