@@ -176,6 +176,30 @@ def _toc_like(lines: list[str]) -> bool:
     return trailing >= 4 and trailing / len(lines) >= 0.3
 
 
+def _split_indent_paragraphs(lines: list[str], short_ratio: float = 0.72,
+                             min_lines: int = 4) -> list[list[str]]:
+    """Split a block's lines into paragraphs at short sentence-final lines.
+    Needs enough lines to know the block's line width; a line qualifies as
+    a paragraph end when it ends in terminal punctuation, is under
+    `short_ratio` of the median line length, and the next line opens with a
+    capital or a quote. Blocks that are one paragraph (the common case) come
+    back unchanged."""
+    if len(lines) < min_lines:
+        return [lines]
+    lens = sorted(len(l) for l in lines)
+    median = lens[len(lens) // 2]
+    groups: list[list[str]] = [[]]
+    for i, line in enumerate(lines):
+        groups[-1].append(line)
+        if i + 1 >= len(lines):
+            break
+        nxt = lines[i + 1].lstrip()
+        if (line.rstrip().endswith(_TERMINAL) and len(line) < short_ratio * median
+                and nxt[:1] and (nxt[:1].isupper() or nxt[:1] in "\"“'‘(")):
+            groups.append([])
+    return [g for g in groups if g]
+
+
 def _clean_page(page: dict, headers: set[str], footers: set[str], body_size: float,
                 dictionary: frozenset[str], removed: dict, ocr_page: bool = False) -> list[str]:
     """Return the page's body paragraphs in reading order."""
@@ -218,9 +242,17 @@ def _clean_page(page: dict, headers: set[str], footers: set[str], body_size: flo
 
         if not kept_lines:
             continue
-        para = strip_superscript_markers(_join_wrapped(kept_lines, dictionary))
-        if para:
-            paragraphs.append(para)
+        # Indent-only paragraphs: many PDFs mark a new paragraph with an
+        # indent and no vertical gap, so pymupdf hands us one block holding
+        # several paragraphs. Within a block, a line that ends a sentence and
+        # is clearly shorter than the block's line width, followed by a line
+        # starting a sentence, is a paragraph end (justified text fills every
+        # other line). Joothan 2026-09-05: 132 merged paragraphs of 2-12k
+        # chars swallowed the rewrite windows and every paragraph pause.
+        for group in _split_indent_paragraphs(kept_lines):
+            para = strip_superscript_markers(_join_wrapped(group, dictionary))
+            if para:
+                paragraphs.append(para)
 
     # Merge blocks that PDF layout split mid-sentence within the page. OCR
     # text layers fragment into line-level blocks, so OCR'd pages merge as

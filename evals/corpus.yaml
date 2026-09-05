@@ -10,7 +10,8 @@ defaults:
   dict_word_ratio_min: 0.85
   garbage_char_density_max: 0.02
   header_page_fraction: 0.2
-  faithfulness_min_similarity: 60
+  faithfulness_min_similarity: 75   # partial_ratio since 2026-09-05 (was token_set_ratio at 60)
+  hallucination_min_similarity: 60  # reverse check keeps token_set_ratio
   faithfulness_min_words: 8
   chapter_text_coverage_min: 0.97
 

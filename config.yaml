@@ -21,6 +21,8 @@ narration:
   rewrite_model: qwen:latest
   judge_model: qwen:latest
   window_paragraphs: 6      # paragraphs per LLM rewrite call
+  window_max_chars: 3500    # AND at most this many chars (model output cap ~4k tokens; oversize paragraphs split at sentences)
+  min_window_output_ratio: 0.85   # rewrite/source length below this = dropped content (faithful runs 0.97-0.99)
   window_retries: 2         # in-stage retries per window
   max_segment_chars: 900
 

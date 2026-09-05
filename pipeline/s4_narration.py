@@ -512,15 +512,49 @@ def spoken_heading(title: str) -> str:
     return t
 
 
-def _windows(text: str, size: int = WINDOW_PARAGRAPHS) -> list[tuple[int, str]]:
-    """(char_offset, window_text) tuples of `size` paragraphs each."""
-    out = []
+WINDOW_MAX_CHARS = int(CFG["narration"].get("window_max_chars", 3500))
+MIN_WINDOW_OUTPUT_RATIO = float(CFG["narration"].get("min_window_output_ratio", 0.85))
+
+
+def _windows(text: str, size: int = WINDOW_PARAGRAPHS,
+             max_chars: int = WINDOW_MAX_CHARS) -> list[tuple[int, str]]:
+    """(char_offset, window_text) tuples: up to `size` paragraphs AND at most
+    `max_chars` characters per window. A paragraph longer than max_chars is
+    split at sentence boundaries. Windows were paragraph-count only until
+    2026-09-05: a memoir whose PDF paragraphs are indent-only came through
+    stage 2 as 132 paragraphs of 2-12k chars, windows hit 25k chars, the
+    model's output cap truncated the tail of every big window, and 27% of
+    the book silently vanished from the narration."""
     paras = text.split("\n\n")
+    # Flatten to (offset, piece) with oversize paragraphs pre-split.
+    pieces: list[tuple[int, str]] = []
     offset = 0
-    for i in range(0, len(paras), size):
-        chunk = "\n\n".join(paras[i: i + size])
-        out.append((offset, chunk))
-        offset += sum(len(p) + 2 for p in paras[i: i + size])
+    for p in paras:
+        if len(p) <= max_chars:
+            pieces.append((offset, p))
+        else:
+            sents = re.split(r"(?<=[.!?])\s+", p)
+            cur, cur_off, pos = "", offset, offset
+            for s in sents:
+                if cur and len(cur) + len(s) + 1 > max_chars:
+                    pieces.append((cur_off, cur))
+                    cur, cur_off = "", pos
+                cur = f"{cur} {s}" if cur else s
+                pos += len(s) + 1
+            if cur:
+                pieces.append((cur_off, cur))
+        offset += len(p) + 2
+    out: list[tuple[int, str]] = []
+    group: list[tuple[int, str]] = []
+    glen = 0
+    for off, piece in pieces:
+        if group and (len(group) >= size or glen + len(piece) + 2 > max_chars):
+            out.append((group[0][0], "\n\n".join(x for _, x in group)))
+            group, glen = [], 0
+        group.append((off, piece))
+        glen += len(piece) + 2
+    if group:
+        out.append((group[0][0], "\n\n".join(x for _, x in group)))
     return [(o, c) for o, c in out if c.strip()]
 
 
@@ -531,8 +565,12 @@ def _local_violations(window_src: str, segments: list[dict]) -> list[str]:
     digits = re.findall(r"\d+", joined)
     if digits:
         problems.append(f"digit strings remain in output: {digits[:8]}")
-    if len(joined) < 0.5 * len(window_src):
-        problems.append(f"output suspiciously short ({len(joined)} chars vs source {len(window_src)}): content was dropped")
+    # Faithful rewrites run 0.97-0.99 of source length (Carnegie p10 0.97);
+    # the old 0.5 bar let a model that truncated the last fifth of every
+    # window pass in-stage QC.
+    if len(joined) < MIN_WINDOW_OUTPUT_RATIO * len(window_src):
+        problems.append(f"output suspiciously short ({len(joined)} chars vs source {len(window_src)}, "
+                        f"ratio {len(joined) / max(1, len(window_src)):.2f}): content was dropped")
     too_long = [s["text"][:60] for s in segments if len(s["text"]) > 900]
     if too_long:
         problems.append(f"segments over 900 chars: {too_long}")

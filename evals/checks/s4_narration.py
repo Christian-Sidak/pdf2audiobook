@@ -209,14 +209,26 @@ def _numeric_blind(text: str) -> str:
 
 
 def _chapter_rewrite_sentences(script: dict, chapter_id: str) -> list[str]:
+    # Section headings count as rewrite output: "PRINCIPLE 6 Let the other
+    # person talk" is source prose that the rewrite correctly typed as a
+    # heading; excluding it read as a dropped sentence.
     texts = [s["text"] for s in script["segments"]
-             if s["chapter_id"] == chapter_id and s["type"] in ("paragraph", "blockquote")]
+             if s["chapter_id"] == chapter_id
+             and s["type"] in ("paragraph", "blockquote", "section_heading")]
     return sentence_split(" ".join(texts))
 
 
 @check(stage=4, dimension="faithfulness_aligned_diff")
 def faithfulness_aligned_diff(doc: DocSpec, art: ArtifactSet, cfg: dict) -> CheckResult:
-    min_sim = cfg.get("faithfulness_min_similarity", 60)
+    # Scorer is partial_ratio: "does this source sentence appear inside some
+    # rewrite sentence?" token_set_ratio at 60 let a first-person memoir lose
+    # 27% of its sentences unflagged, because dropped sentences found a
+    # spurious set-overlap match on common words. Calibrated 2026-09-05:
+    # faithful chapters (Carnegie, Joothan preface) p1 93-94, p5 96-98;
+    # the lossy chapter had 24% below 75. Cutoff 75 leaves room for
+    # verbalized numbers lengthening a sentence ("$4.95" -> "four dollars
+    # and ninety-five cents"); 75-85 goes to the judge as ambiguous.
+    min_sim = cfg.get("faithfulness_min_similarity", 75)
     min_words = cfg.get("faithfulness_min_words", 8)
     script = _script(art)
     violations = []
@@ -238,7 +250,7 @@ def faithfulness_aligned_diff(doc: DocSpec, art: ArtifactSet, cfg: dict) -> Chec
             if len(src.split()) <= min_words or _allowed_deletion(src, doc):
                 continue
             best = process.extractOne(_numeric_blind(src), blind_rewrites,
-                                      scorer=fuzz.token_set_ratio, score_cutoff=min_sim)
+                                      scorer=fuzz.partial_ratio, score_cutoff=min_sim)
             if best is None:
                 violations.append(Violation(
                     message=f"source sentence dropped: {src[:100]!r}",
@@ -258,7 +270,9 @@ def no_hallucination_judge(doc: DocSpec, art: ArtifactSet, cfg: dict) -> CheckRe
     """Judge rewrite sentences with no plausible source: hallucination hunt."""
     from evals.llm_judge import judge, judge_available
 
-    min_sim = cfg.get("faithfulness_min_similarity", 60)
+    # Reverse direction (rewrite sentence with no source match); keeps the
+    # original token_set scorer and bar, independent of the faithfulness one.
+    min_sim = cfg.get("hallucination_min_similarity", 60)
     script = _script(art)
 
     candidates: list[tuple[str, str, str]] = []
