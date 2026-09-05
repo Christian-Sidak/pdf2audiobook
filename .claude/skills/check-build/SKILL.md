@@ -10,10 +10,17 @@ Answer "how is the render going?" and get a stuck build moving again.
 ## Status
 
 ```bash
-python3 main.py status                 # panel per book: take progress, pace, ETA
-python3 main.py status <book>          # one book (substring match on book id)
-python3 main.py status --watch         # refresh every 15s
+python3 main.py progress               # per book: phase, script windows, takes, pace, ETA, QC tallies
+python3 main.py progress <book> --json # machine-readable (same collector as the dashboard)
+python3 main.py progress --watch       # refresh every 15s
+python3 main.py dashboard              # web page at http://localhost:8787 (LAN-reachable; /api = JSON)
+python3 main.py status                 # older, coarser panel (take count only)
 ```
+
+`progress` derives everything from artifacts and the newest render log:
+stage-4 windows narrated vs planned, stage-5 takes for the current script
+with pace and ETA, each QC attempt's flag tally, halts, crashes, output and
+the iCloud copy. Prefer it over reading logs by hand.
 
 The panel derives pace from takes rendered in the last 30 minutes and checks
 for a live `main.py build` process. Read the states literally:
