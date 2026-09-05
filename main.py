@@ -244,6 +244,38 @@ def voice_distill(name: str, text, n: int):
     sys.exit(0 if distill_reference(name, text, n) else 1)
 
 
+@cli.command("repair-splits")
+@click.argument("book")
+@click.option("--dry-run", is_flag=True, help="report joins without writing the narration")
+def repair_splits_cmd(book: str, dry_run: bool):
+    """Rejoin wrongly split sentences (middle initials, abbreviations) in an
+    existing narration script, judged by the local LLM. Then re-run stages
+    5-6: only the joined segments re-render."""
+    import json as _json
+
+    from evals.contracts import ARTIFACT_FILES, BookCtx
+    from pipeline.config import ARTIFACTS_DIR, REWRITE_MODEL
+    from pipeline.s4_narration import adjudicate_splits, repair_splits
+
+    art_dir = ARTIFACTS_DIR / book
+    if not (art_dir / ARTIFACT_FILES["narration"]).exists():
+        console.print(f"[red]no narration for {book}; run stages 1-4 first[/red]")
+        sys.exit(1)
+    source_pdf = _json.loads((art_dir / "01_extract.json").read_text()).get("pdf", "")
+    ctx = BookCtx.for_book(book, source_pdf)
+    if dry_run:
+        path = ctx.artifacts_dir / ARTIFACT_FILES["narration"]
+        segs = _json.loads(path.read_text(encoding="utf-8"))["segments"]
+        out = adjudicate_splits(segs, REWRITE_MODEL)
+        joined = {s["text"] for s in out} - {s["text"] for s in segs}
+        for t in sorted(joined)[:40]:
+            console.print(f"  [green]JOIN[/green] {t[:140]}")
+        console.print(f"[cyan]dry run:[/cyan] {len(segs)} -> {len(out)} segments")
+        return
+    n = repair_splits(ctx)
+    console.print(f"[green]joined {n} boundaries[/green]; re-run --stages 5-6 to render them")
+
+
 @cli.command()
 @click.argument("book")
 @click.argument("image", type=click.Path(exists=True))

@@ -16,7 +16,7 @@ from functools import lru_cache
 from pathlib import Path
 
 from evals.contracts import ARTIFACT_FILES, BookCtx, Violation
-from pipeline.config import PAUSE_POLICY, REWRITE_MODEL
+from pipeline.config import PAUSE_POLICY, REWRITE_MODEL, ROOT
 from pipeline.ir import NarrationScript, Segment
 from pipeline.ollama_client import chat_json
 
@@ -740,6 +740,155 @@ def _explode_sentences(segments: list[dict]) -> list[dict]:
     return out
 
 
+# Sentence-boundary adjudication. The regex splitter cannot tell "Owen D. |
+# Young" (a middle initial) from "plan B. | Then" (a sentence end), and the
+# costs are asymmetric: an over-joined take runs long and the length splitter
+# trims it at a clause; an under-joined one is a 0.5s "Owen D." take that
+# fails take review on every re-roll (Carnegie 2026-09-05: six such names).
+# So deterministic code flags SUSPICIOUS boundaries (a small subset), the LLM
+# decides join-or-split on just those, the answer is schema-validated and
+# cached, and the fallback biases toward joining on the initial pattern.
+_INITIAL_END = re.compile(r"\b[A-Z]\.$")
+_ABBR_END = re.compile(r"\b(?:Jr|Sr|Inc|Ltd|Co|Bros|vs|etc|Mt|Ft)\.$")
+SPLIT_CACHE = ROOT / "evals" / ".cache" / "split_adjudication"
+SPLIT_PROMPT_VERSION = "v1"
+SPLIT_SCHEMA = {
+    "type": "object",
+    "properties": {"decisions": {"type": "array", "items": {
+        "type": "object",
+        "properties": {"i": {"type": "integer"}, "join": {"type": "boolean"}},
+        "required": ["i", "join"]}}},
+    "required": ["decisions"],
+}
+SPLIT_PROMPT = """A narration script was split into sentences for text-to-speech, one take per \
+sentence. Some splits are wrong: a period after a middle initial ("Owen D." + "Young, a lawyer"), \
+an abbreviation ("Rockefeller, Jr." + "was..."), a list label, or a fragment that cannot be spoken \
+as its own take. For each numbered pair decide whether LEFT and RIGHT are ONE sentence that was \
+wrongly split (join: true) or genuinely two sentences (join: false). A short but complete sentence \
+stays split. Do not rewrite anything.
+
+{pairs}
+
+Return JSON: {{"decisions": [{{"i": <pair number>, "join": true|false}}, ...]}}, one entry per pair."""
+
+
+def _suspicious_boundary(left: str, right: str) -> bool:
+    a, b = left.strip(), right.strip()
+    return bool(_INITIAL_END.search(a) or _ABBR_END.search(a) or len(a) < 25
+                or (b and b[0].islower()))
+
+
+def _fallback_join(left: str, right: str) -> bool:
+    a = left.strip()
+    return bool(_INITIAL_END.search(a) or _ABBR_END.search(a))
+
+
+def adjudicate_splits(segments: list[dict], model: str, batch: int = 20) -> list[dict]:
+    """Join wrongly split sentences. Candidates are consecutive segments from
+    the same paragraph whose boundary looks suspicious; the LLM rules on each
+    candidate pair, decisions are cached by pair text, and a mechanical
+    fallback (join on initial/abbreviation) covers an unreachable or
+    malformed judge."""
+    import hashlib
+
+    # Candidates: same chapter, both prose. Within a paragraph any suspicious
+    # boundary qualifies. ACROSS paragraphs only the strong signals do (an
+    # initial or abbreviation on the left, a lowercase start on the right):
+    # the LLM window rewrite splits "Owen D." from "Young" at a PDF line
+    # break and emits them as separate paragraphs, so a same-paragraph rule
+    # never sees the worst cases. A join keeps the left segment's paragraph.
+    def _cand(i: int) -> bool:
+        a, b = segments[i], segments[i + 1]
+        if a.get("chapter_id") != b.get("chapter_id"):
+            return False
+        if a["type"] not in ("paragraph", "blockquote") or b["type"] not in ("paragraph", "blockquote"):
+            return False
+        at, bt = a["text"].strip(), b["text"].strip()
+        strong = bool(_INITIAL_END.search(at) or _ABBR_END.search(at) or (bt and bt[0].islower()))
+        if a.get("para_id") and a.get("para_id") == b.get("para_id"):
+            return strong or _suspicious_boundary(at, bt)
+        return strong
+
+    cands = [i for i in range(len(segments) - 1) if _cand(i)]
+    if not cands:
+        return segments
+    decisions: dict[int, bool] = {}
+    uncached: list[tuple[int, Path]] = []
+    for i in cands:
+        key = hashlib.sha256(f"{SPLIT_PROMPT_VERSION}|{model}|{segments[i]['text']}|"
+                             f"{segments[i + 1]['text']}".encode()).hexdigest()[:24]
+        c = SPLIT_CACHE / f"{key}.json"
+        if c.exists():
+            decisions[i] = bool(json.loads(c.read_text())["join"])
+        else:
+            uncached.append((i, c))
+    judged = fallback = 0
+    for start in range(0, len(uncached), batch):
+        chunk = uncached[start:start + batch]
+        pairs = "\n".join(f"{n}. LEFT: {segments[i]['text']!r}\n   RIGHT: {segments[i + 1]['text']!r}"
+                          for n, (i, _) in enumerate(chunk, 1))
+        try:
+            r = chat_json(model, [{"role": "user", "content": SPLIT_PROMPT.format(pairs=pairs)}],
+                          SPLIT_SCHEMA, temperature=0.0, num_ctx=4096)
+            got = {int(d["i"]): bool(d["join"]) for d in r.get("decisions", [])
+                   if isinstance(d, dict) and "i" in d and "join" in d}
+        except Exception:
+            got = {}
+        for n, (i, c) in enumerate(chunk, 1):
+            if n in got:
+                decisions[i] = got[n]
+                SPLIT_CACHE.mkdir(parents=True, exist_ok=True)
+                c.write_text(json.dumps({"join": got[n]}))
+                judged += 1
+            else:
+                decisions[i] = _fallback_join(segments[i]["text"], segments[i + 1]["text"])
+                fallback += 1
+    out: list[dict] = []
+    i = 0
+    while i < len(segments):
+        seg = dict(segments[i])
+        j = i
+        while decisions.get(j):
+            seg["text"] = f"{seg['text']} {segments[j + 1]['text']}".strip()
+            j += 1
+        out.append(seg)
+        i = j + 1
+    joined = sum(1 for v in decisions.values() if v)
+    print(f"  split adjudication: {len(cands)} suspicious boundaries, {joined} joined "
+          f"({len(cands) - judged - fallback} cached, {judged} judged, {fallback} fallback)", flush=True)
+    return out
+
+
+def repair_splits(book: BookCtx) -> int:
+    """Apply split adjudication to an existing narration script (for a book
+    narrated before the adjudicator existed). Re-ids segments; run stages
+    5-6 afterwards: only the joined segments re-render. Returns joins."""
+    import shutil
+    import time
+
+    model = book.config.get("rewrite_model", REWRITE_MODEL)
+    path = book.artifacts_dir / ARTIFACT_FILES["narration"]
+    data = json.loads(path.read_text(encoding="utf-8"))
+    before = len(data["segments"])
+    segs = adjudicate_splits(data["segments"], model)
+    segs = split_long_segments(segs)
+    if len(segs) == before:
+        print("  no joins; narration unchanged", flush=True)
+        return 0
+    shutil.copy2(path, path.with_name(f"04_narration.{int(time.time())}.presplitfix.bak.json"))
+    para_counts: dict[str, int] = {}
+    for seg in segs:
+        pid = seg.get("para_id") or ""
+        seg["sentence_index"] = para_counts.get(pid, 0)
+        para_counts[pid] = seg["sentence_index"] + 1
+    for i, seg in enumerate(segs):
+        seg["id"] = f"seg_{i:04d}"
+    data["segments"] = segs
+    path.write_text(json.dumps(data, indent=1), encoding="utf-8")
+    print(f"  narration rewritten: {before} -> {len(segs)} segments", flush=True)
+    return before - len(segs)
+
+
 def _write_script(book: BookCtx, all_segments: list[dict], model: str,
                   input_hash: str | None = None) -> Path:
     all_segments = [s for s in all_segments
@@ -750,6 +899,7 @@ def _write_script(book: BookCtx, all_segments: list[dict], model: str,
         s["text"] = fix_year_style(
             verbalize_romans(verbalize_fractions(s["text"].replace("\\", " ")))).strip()
     all_segments = _explode_sentences(all_segments)
+    all_segments = adjudicate_splits(all_segments, model)  # rejoin split initials etc.
     all_segments = split_long_segments(all_segments)  # clause-splits rare huge sentences
     para_counts: dict[str, int] = {}
     for seg in all_segments:
