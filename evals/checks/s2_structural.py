@@ -73,6 +73,39 @@ def seeded_forbidden(doc: DocSpec, art: ArtifactSet, cfg: dict) -> CheckResult:
     return CheckResult.passed("seeded_forbidden", 2, seeded=len(doc.must_not_contain))
 
 
+@check(stage=2, dimension="removed_text_absent")
+def removed_text_absent(doc: DocSpec, art: ArtifactSet, cfg: dict) -> CheckResult:
+    """Whatever stage 2 says it removed must actually be gone from the body:
+    footnote blocks, captions, and non-prose pages (diagrams, family trees,
+    charts). A page dropped by the judge that still leaks a line into the
+    narration is a real defect, not a threshold question. Lines under 25
+    characters are too short to test without false hits on ordinary words."""
+    # Compare against NARRATED text (body chapters) with whitespace
+    # normalized, and require a substantial run of the removed block (its
+    # first 120 chars, blocks under 60 chars skipped): a single footnote line
+    # legitimately recurs in a glossary or a list of names, a whole block
+    # does not.
+    from evals.textutil import normalize
+
+    narrated = normalize(" ".join(c["text"] for c in art.chapters["chapters"]
+                                  if c.get("matter", "body") == "body"))
+    removed = art.structural.get("removed", {})
+    violations = []
+    kinds = {"footnotes": removed.get("footnotes", []), "captions": removed.get("captions", []),
+             "non_prose_pages": [p.get("text", "") for p in removed.get("non_prose_pages", [])]}
+    for kind, items in kinds.items():
+        for item in items:
+            probe = normalize(item)
+            if len(probe) < 60:
+                continue
+            if probe[:120] in narrated:
+                violations.append(Violation(message=f"{kind}: removed block present in narration: {probe[:80]!r}"))
+    details = {k: len(v) for k, v in kinds.items()}
+    if violations:
+        return CheckResult.failed("removed_text_absent", 2, violations, **details)
+    return CheckResult.passed("removed_text_absent", 2, **details)
+
+
 @check(stage=2, dimension="no_footnotes_inline")
 def no_footnotes_inline(doc: DocSpec, art: ArtifactSet, cfg: dict) -> CheckResult:
     """Runs on NARRATED text (body chapters): bibliographies and notes

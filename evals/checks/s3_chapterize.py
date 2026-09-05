@@ -51,7 +51,11 @@ def chapter_count(doc: DocSpec, art: ArtifactSet, cfg: dict) -> CheckResult:
 @check(stage=3, dimension="chapter_titles_vs_golden", requires=("golden.chapters",))
 def chapter_titles_vs_golden(doc: DocSpec, art: ArtifactSet, cfg: dict) -> CheckResult:
     golden = json.loads(doc.golden_path("chapters").read_text())
-    want = [normalize(t, casefold=True) for t in golden["titles"]]
+    # Golden files carry either a bare "titles" list or the seeded
+    # "chapters" list of {title, ...}; the Tsavo golden has the latter and
+    # this check errored on every run since it was seeded.
+    titles = golden.get("titles") or [c["title"] for c in golden.get("chapters", [])]
+    want = [normalize(t, casefold=True) for t in titles]
     got = [normalize(c["title"], casefold=True) for c in _body_chapters(art)]
     if got != want:
         violations = []

@@ -176,6 +176,77 @@ def _toc_like(lines: list[str]) -> bool:
     return trailing >= 4 and trailing / len(lines) >= 0.3
 
 
+# Non-prose pages: diagrams, charts, family trees, tables of labels. Their
+# text extracts fine and reads as nonsense ("Zaharia Great-grandfather Buddha
+# grandfather Kundan great uncle married married died, aged 22"). Deterministic
+# code nominates candidates from the shape of the raw lines (short lines,
+# almost no sentence punctuation), the judge model decides narrate-or-drop
+# on just those, the answer is cached by page text, and the fallback drops
+# only when the page announces itself as a figure. Verse pages look like
+# candidates too, which is exactly why the decision is the LLM's.
+# Joothan 2026-09-05: the Foreword's family-tree page was narrated.
+_FIGURE_HEAD = re.compile(
+    r"^(?:.*\b(?:family tree|figure|fig\.|table|chart|diagram|map|plate|genealog)\b.*)$",
+    re.IGNORECASE)
+NON_PROSE_CACHE = Path(__file__).resolve().parent.parent / "evals" / ".cache" / "nonprose_pages"
+NON_PROSE_SCHEMA = {
+    "type": "object",
+    "properties": {"narrate": {"type": "boolean"},
+                   "kind": {"enum": ["prose", "verse", "diagram", "table", "chart",
+                                     "figure_labels", "list", "other"]},
+                   "reason": {"type": "string"}},
+    "required": ["narrate", "kind", "reason"],
+}
+NON_PROSE_PROMPT = """This is the extracted text of ONE page of a book being turned into an audiobook. \
+Decide whether a narrator should read it aloud. Prose, dialogue, verse, and readable lists ARE narrated. \
+Diagrams, family trees, charts, tables of labels or numbers, figure callouts, and pages that are only \
+disconnected labels are NOT narrated (a listener cannot follow them). Judge the page as a whole.
+
+PAGE TEXT:
+{text}
+
+Return JSON: {{"narrate": true|false, "kind": "prose"|"verse"|"diagram"|"table"|"chart"|"figure_labels"|"list"|"other", "reason": "one short sentence"}}"""
+
+
+def _non_prose_candidate(lines: list[str]) -> bool:
+    lines = [l.strip() for l in lines if l.strip()]
+    if len(lines) < 6:
+        return False
+    if _FIGURE_HEAD.match(lines[0]) and len(lines[0]) < 60:
+        return True
+    lens = sorted(len(l) for l in lines)
+    median = lens[len(lens) // 2]
+    terminal = sum(1 for l in lines if l.endswith(_TERMINAL)) / len(lines)
+    short_words = sum(1 for l in lines if len(l.split()) <= 2) / len(lines)
+    return median < 28 and terminal < 0.12 and short_words >= 0.5
+
+
+def _adjudicate_non_prose(page_text: str) -> dict:
+    """LLM verdict on a candidate page, cached by text. Fallback when the
+    judge is unreachable or malformed: drop only a self-announced figure."""
+    import hashlib
+
+    key = hashlib.sha256(f"v1|{page_text}".encode()).hexdigest()[:24]
+    cache = NON_PROSE_CACHE / f"{key}.json"
+    if cache.exists():
+        return json.loads(cache.read_text())
+    try:
+        from pipeline.ollama_client import chat_json
+        model = CFG["narration"].get("judge_model") or CFG["narration"]["rewrite_model"]
+        r = chat_json(model, [{"role": "user", "content": NON_PROSE_PROMPT.format(text=page_text[:3000])}],
+                      NON_PROSE_SCHEMA, temperature=0.0, num_ctx=4096)
+        verdict = {"narrate": bool(r["narrate"]), "kind": r.get("kind", "other"),
+                   "reason": str(r.get("reason", ""))[:200], "source": "llm"}
+        NON_PROSE_CACHE.mkdir(parents=True, exist_ok=True)
+        cache.write_text(json.dumps(verdict))
+        return verdict
+    except Exception:
+        first = page_text.strip().splitlines()[0] if page_text.strip() else ""
+        drop = bool(_FIGURE_HEAD.match(first) and len(first) < 60)
+        return {"narrate": not drop, "kind": "figure_labels" if drop else "other",
+                "reason": "judge unavailable; mechanical fallback", "source": "fallback"}
+
+
 def _split_indent_paragraphs(lines: list[str], short_ratio: float = 0.72,
                              min_lines: int = 4) -> list[list[str]]:
     """Split a block's lines into paragraphs at short sentence-final lines.
@@ -316,15 +387,28 @@ def run(book: BookCtx) -> Path:
     body_size = _body_font_size(pages)
 
     removed = {"headers": sorted(headers), "footers": sorted(footers),
-               "page_numbers": 0, "matched_margin_lines": 0, "footnotes": [], "captions": []}
+               "page_numbers": 0, "matched_margin_lines": 0, "footnotes": [], "captions": [],
+               "non_prose_pages": []}
 
     ocr_pages = set(extract.get("ocr_pages", []))
     page_paragraphs: list[tuple[int, list[str]]] = []
     toc_pages: set[int] = set()
+    non_prose_pages: set[int] = set()
     for p in pages:
         raw_lines = [l for b in p.get("blocks", []) for l in b["text"].splitlines()]
         if _toc_like(raw_lines):
             toc_pages.add(p["number"])
+        elif _non_prose_candidate(raw_lines):
+            verdict = _adjudicate_non_prose("\n".join(l for l in raw_lines if l.strip()))
+            if not verdict["narrate"]:
+                non_prose_pages.add(p["number"])
+                removed["non_prose_pages"].append({
+                    "page": p["number"] + 1, "kind": verdict["kind"], "source": verdict["source"],
+                    "reason": verdict["reason"], "text": "\n".join(raw_lines)[:400]})
+                page_paragraphs.append((p["number"], []))
+                print(f"  page {p['number'] + 1}: {verdict['kind']} not narrated "
+                      f"({verdict['reason'][:70]})", flush=True)
+                continue
         page_paragraphs.append((p["number"], _clean_page(p, headers, footers, body_size,
                                                          dictionary, removed,
                                                          ocr_page=p["number"] in ocr_pages)))
@@ -369,7 +453,7 @@ def run(book: BookCtx) -> Path:
         return f"{left}-{right}"
 
     spaced = re.compile(r"\b([A-Za-z]{2,})- (?!(?:and|or|nor|und|oder|to)\b)([a-z]{2,})\b")
-    out_pages = [{"number": n, "toc_like": n in toc_pages,
+    out_pages = [{"number": n, "toc_like": n in toc_pages, "non_prose": n in non_prose_pages,
                   "text": spaced.sub(_fix_spaced_hyphen, "\n\n".join(paras))}
                  for n, paras in flowed]
     body = "\n\n".join(p["text"] for p in out_pages if p["text"])

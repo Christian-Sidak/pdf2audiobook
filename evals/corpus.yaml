@@ -56,6 +56,41 @@ documents:
   skip_checks:
   - no_footnotes_inline
   - paragraph_reflow
+  - removed_text_absent   # example prompt boxes are duplicated in the paper body; smoke doc
+
+- id: joothan_valmiki_mukherjee_trans_2003
+  pdf: library/Joothan (Valmiki, Mukherjee trans 2003).pdf
+  kind: book
+  language: en
+  tier: smoke
+  # Copyrighted (Columbia UP 2003): PDF untracked, private use; seeded
+  # strings are short quotes. Exercises: indent-only paragraphs, a blank
+  # page before a chapter, a family-tree diagram page (13), small-font
+  # footnotes, missing spaces after punctuation.
+  expect:
+    chapter_count: 4        # body chapters: Foreword, Preface, Introduction, Joothan
+    has_embedded_toc: false
+    ocr_expected_pages: []
+  assertions:
+    must_contain:
+    - id: intro_opens_in_intro
+      text: "is among the first texts in Hindi"
+      note: Introduction's first sentence; was glued onto the Preface by cross-page re-flow
+    - id: narrative_opens
+      text: "Our house was next to Chandrabhan"
+    must_not_contain:
+    - id: family_tree_label
+      text: "Zaharia Great-grandfather"
+      note: page 13 family-tree diagram, not prose
+    - id: family_tree_marriages
+      text: "Rahti Devi\nBimla Devi"
+      note: diagram labels
+    - id: footnote_10
+      text: "The baithak was out of bounds to women"
+      note: small-font footnote on page 60
+    keep_hyphens: []
+    deletion_allowlist: []
+  skip_checks: []
 
 - id: trial_of_joan_of_arc
   pdf: "library/Trial-of-Joan-of-Arc.pdf"
