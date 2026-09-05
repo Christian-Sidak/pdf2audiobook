@@ -106,6 +106,25 @@ def removed_text_absent(doc: DocSpec, art: ArtifactSet, cfg: dict) -> CheckResul
     return CheckResult.passed("removed_text_absent", 2, **details)
 
 
+@check(stage=2, dimension="punctuation_spacing")
+def punctuation_spacing(doc: DocSpec, art: ArtifactSet, cfg: dict) -> CheckResult:
+    """Sentence punctuation followed directly by a capital ("earth.Varnashram")
+    fuses sentences into one take and defeats every sentence-aligned check.
+    Clean PDFs run under 0.1 per 1,000 chars; Joothan's extraction ran 1.6
+    before stage 2 learned to repair it."""
+    body = art.body_text
+    if len(body) < 5000:
+        return CheckResult.skipped("punctuation_spacing", 2, "too little text")
+    hits = re.findall(r"[a-z0-9][.!?][A-Z]|[a-z][,;:][A-Za-z]", body)
+    per_k = 1000 * len(hits) / len(body)
+    limit = cfg.get("punct_spacing_max_per_kchar", 0.3)
+    if per_k > limit:
+        return CheckResult.failed("punctuation_spacing", 2, [Violation(
+            message=f"{per_k:.2f} fused punctuation per 1,000 chars > {limit} (e.g. {hits[:5]})")],
+            per_kchar=round(per_k, 3))
+    return CheckResult.passed("punctuation_spacing", 2, per_kchar=round(per_k, 3))
+
+
 @check(stage=2, dimension="no_footnotes_inline")
 def no_footnotes_inline(doc: DocSpec, art: ArtifactSet, cfg: dict) -> CheckResult:
     """Runs on NARRATED text (body chapters): bibliographies and notes

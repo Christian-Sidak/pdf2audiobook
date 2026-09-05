@@ -247,6 +247,28 @@ def _adjudicate_non_prose(page_text: str) -> dict:
                 "reason": "judge unavailable; mechanical fallback", "source": "fallback"}
 
 
+# Some PDFs drop the space after sentence punctuation ("on earth.Varnashram
+# Dharma", "1949.Valmiki", ":“Chuhre"). Joothan: 1.6 per 1,000 chars vs 0.09
+# in a clean PDF. Downstream it fuses sentences (one take, no breath) and
+# breaks every sentence-aligned check. Repairs are shape-restricted so
+# abbreviations and initials ("U.S.A", "e.g.") stay intact: a terminal mark
+# gets a space only between a lowercase letter or digit and a capital; a
+# comma/semicolon/colon only between letters; a quote after punctuation
+# only before a letter.
+_SPACE_TERMINAL = re.compile(r"([a-z0-9])([.!?])([A-Z])")
+_SPACE_CLAUSE = re.compile(r"([a-z])([,;:])([A-Za-z])")
+_SPACE_CLOSE_QUOTE = re.compile(r"([.!?,;:][\"”’])([A-Za-z])")
+_SPACE_OPEN_QUOTE = re.compile(r"([,;:.!?])([“\"])([A-Za-z])")
+
+
+def repair_punct_spacing(text: str) -> str:
+    text = _SPACE_TERMINAL.sub(r"\1\2 \3", text)
+    text = _SPACE_CLAUSE.sub(r"\1\2 \3", text)
+    text = _SPACE_CLOSE_QUOTE.sub(r"\1 \2", text)
+    text = _SPACE_OPEN_QUOTE.sub(r"\1 \2\3", text)
+    return text
+
+
 def _split_indent_paragraphs(lines: list[str], short_ratio: float = 0.72,
                              min_lines: int = 4) -> list[list[str]]:
     """Split a block's lines into paragraphs at short sentence-final lines.
@@ -321,7 +343,7 @@ def _clean_page(page: dict, headers: set[str], footers: set[str], body_size: flo
         # other line). Joothan 2026-09-05: 132 merged paragraphs of 2-12k
         # chars swallowed the rewrite windows and every paragraph pause.
         for group in _split_indent_paragraphs(kept_lines):
-            para = strip_superscript_markers(_join_wrapped(group, dictionary))
+            para = repair_punct_spacing(strip_superscript_markers(_join_wrapped(group, dictionary)))
             if para:
                 paragraphs.append(para)
 

@@ -57,6 +57,7 @@ documents:
   - no_footnotes_inline
   - paragraph_reflow
   - removed_text_absent   # example prompt boxes are duplicated in the paper body; smoke doc
+  - punctuation_spacing   # artifacts predate the spacing repair; corpus id != build id, cannot rebuild in place
 
 - id: joothan_valmiki_mukherjee_trans_2003
   pdf: library/Joothan (Valmiki, Mukherjee trans 2003).pdf
