@@ -44,6 +44,11 @@ def _escape_meta(value: str) -> str:
 
 # Encode with headroom below the check ceiling: AAC encoding overshoots peaks.
 _ENCODE_TP = TRUE_PEAK_MAX_DBTP - 1.0
+# PCM limiter ceiling (linear) before AAC. 0.63 (-4 dBFS) measured -2.4 dB
+# sample peak after encode on the Carnegie master (2026-09-05): AAC at 96k
+# overshoots by ~1.6 dB, not the <1 dB assumed. 0.5 (-6 dBFS) leaves margin
+# under the ACX -3 dB gate; loudnorm still lands integrated loudness.
+_LIMITER_CEILING = float(CFG["mastering"].get("limiter_ceiling", 0.5))
 
 
 def _measure_loudnorm(path: Path) -> dict:
@@ -137,7 +142,7 @@ def run(book: BookCtx) -> Path:
               # loudnorm upsamples to 192 kHz internally; resample BEFORE the
               # limiter so the ceiling holds at the delivery rate.
               f"aresample={SAMPLE_RATE},"
-              f"alimiter=limit=0.63:level=false")  # ~-4 dBFS ceiling; AAC adds <1 dB
+              f"alimiter=limit={_LIMITER_CEILING}:level=false")  # AAC overshoots the PCM ceiling
         args = ["-i", str(combined), "-i", str(meta_file), "-map_metadata", "1",
                 "-af", ln, "-c:a", "aac", "-b:a", AAC_BITRATE]
         title = book.config.get("title")

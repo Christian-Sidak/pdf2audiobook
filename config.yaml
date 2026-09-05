@@ -80,6 +80,7 @@ mastering:
   lufs_target: -18.0
   true_peak_max_dbtp: -3.0  # ACX: peaks at or below -3 dB (sample peak)
   aac_bitrate: 96k
+  limiter_ceiling: 0.5      # PCM ceiling before AAC (-6 dBFS); encode overshoots ~1.6 dB, ACX wants peaks <= -3 dB
   room_tone_db: -58.0
   head_tone_s: 0.75
   tail_tone_s: 2.0
