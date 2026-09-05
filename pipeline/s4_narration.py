@@ -723,9 +723,22 @@ def _map_label_like(text: str) -> bool:
     return oov / len(tokens) >= 0.4
 
 
+# A segment that is nothing but a parenthetical citation, "(Ambedkar 1969:
+# 143)" or its verbalized form "(Ambedkar nineteen sixty-nine: one hundred
+# forty-three)", is apparatus the rewrite was told to drop and sometimes
+# keeps as its own segment (Joothan 2026-09-05). Inline citations inside a
+# sentence are left to the LLM; only the bare, whole-segment form is caught.
+_YEAR_WORDS = r"(?:eighteen|nineteen|twenty)(?:[\s-]+[a-z]+){1,3}"
+_BARE_CITATION = re.compile(
+    rf"^\(\s*[A-Z][\w.'’-]+(?:\s+(?:and|&|et al\.?)\s+[A-Z][\w.'’-]+)*,?\s+"
+    rf"(?:\d{{4}}[a-z]?|{_YEAR_WORDS})[^)]{{0,80}}\)\s*[.;,]?$")
+
+
 def _content_free(text: str) -> bool:
     """Segments that are mostly digits/punctuation (leaked page lists,
-    reference runs) must never be narrated."""
+    reference runs) or a bare parenthetical citation must never be narrated."""
+    if _BARE_CITATION.match(text.strip()):
+        return True
     stripped = re.sub(r"\s", "", text)
     if len(stripped) < 20:
         return False
