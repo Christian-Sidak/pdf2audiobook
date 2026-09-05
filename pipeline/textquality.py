@@ -70,6 +70,24 @@ def dict_word_ratio(text: str) -> float:
     return sum(1 for t in tokens if is_word(t, d)) / len(tokens)
 
 
+def dict_word_ratio_prose(text: str, min_prose_tokens: int = 3) -> float:
+    """dict_word_ratio with proper nouns exempted: a Titlecase token the
+    dictionary does not know ("Molhar", "Shyamlal", "Kilimanjaro") is a name,
+    not OCR debris, and is speakable. The ratio is taken over the remaining
+    tokens when enough of them exist; a segment that is nothing but unknown
+    Titlecase words falls back to the plain ratio so a line of garbage
+    capitals still trips the gate. Joothan 2026-09-05: 16 sentences of
+    Indian names flagged 'unreadable' at the plain ratio."""
+    raw = _TOKEN.findall(text)
+    if not raw:
+        return 1.0
+    d = _dictionary()
+    prose = [t for t in raw if not (t[:1].isupper() and t[1:].islower() and not is_word(t.lower(), d))]
+    if len(prose) < min_prose_tokens:
+        return dict_word_ratio(text)
+    return sum(1 for t in prose if is_word(t.lower(), d)) / len(prose)
+
+
 def garbage_density(text: str) -> float:
     """Fraction of characters that are extraction-failure markers."""
     if not text:

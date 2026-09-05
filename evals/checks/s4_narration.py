@@ -63,20 +63,21 @@ def segment_text_quality(doc: DocSpec, art: ArtifactSet, cfg: dict) -> CheckResu
     """Narration must read as language. Passthrough-fallback windows can ship
     raw OCR debris that faithfulness cannot flag (it is faithful to the
     garbage); the dictionary gate catches it."""
-    from pipeline.textquality import dict_word_ratio
+    from pipeline.textquality import dict_word_ratio_prose
 
     ratio_min = cfg.get("segment_dict_word_ratio_min", 0.55)
     violations = []
     for seg in _script(art)["segments"]:
         if seg["type"] == "chapter_heading" or len(seg["text"]) < 40:
             continue
-        ratio = dict_word_ratio(_numeric_blind(seg["text"]))
+        # Proper nouns exempt: a sentence of unfamiliar names is speakable.
+        ratio = dict_word_ratio_prose(_numeric_blind(seg["text"]))
         if ratio < ratio_min:
             violations.append(Violation(
                 message=f"unreadable narration (dict ratio {ratio:.2f}): {seg['text'][:80]!r}",
                 unit_id=seg["id"], context=seg["text"][:200], fixable=True))
     if violations:
-        return CheckResult.failed("segment_text_quality", 4, violations[:20], total=len(violations))
+        return CheckResult.failed("segment_text_quality", 4, violations, total=len(violations))
     return CheckResult.passed("segment_text_quality", 4)
 
 
