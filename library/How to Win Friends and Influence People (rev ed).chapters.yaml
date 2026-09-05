@@ -1,0 +1,44 @@
+# Manual chapter map for the Simon & Schuster revised edition (263 pp).
+# The heuristics collapsed the book to its four Parts; the 30 numbered
+# chapters use a bare digit heading the detector does not see. Pages are
+# 1-indexed PDF pages. Each Part title page is folded into its first chapter's
+# heading (a title-only chapter has no body and trips the faithfulness check). Pages 1-10 (title, copyright, contents)
+# become Front Matter automatically.
+chapters:
+  - {title: "Preface", start_page: 11}
+  - {title: "How This Book Was Written, and Why", start_page: 13}
+  - {title: "Nine Suggestions on How to Get the Most Out of This Book", start_page: 19}
+  - {title: "Part One: Fundamental Techniques in Handling People. Chapter 1: If You Want to Gather Honey, Don't Kick Over the Beehive", start_page: 24}
+  - {title: "Chapter 2: The Big Secret of Dealing with People", start_page: 38}
+  - {title: "Chapter 3: He Who Can Do This Has the Whole World with Him. He Who Cannot Walks a Lonely Way", start_page: 51}
+  - {title: "Part Two: Six Ways to Make People Like You. Chapter 1: Do This and You'll Be Welcome Anywhere", start_page: 67}
+  - {title: "Chapter 2: A Simple Way to Make a Good First Impression", start_page: 80}
+  - {title: "Chapter 3: If You Don't Do This, You Are Headed for Trouble", start_page: 88}
+  - {title: "Chapter 4: An Easy Way to Become a Good Conversationalist", start_page: 96}
+  - {title: "Chapter 5: How to Interest People", start_page: 105}
+  - {title: "Chapter 6: How to Make People Like You Instantly", start_page: 109}
+  - {title: "Part Three: How to Win People to Your Way of Thinking. Chapter 1: You Can't Win an Argument", start_page: 120}
+  - {title: "Chapter 2: A Sure Way of Making Enemies, and How to Avoid It", start_page: 129}
+  - {title: "Chapter 3: If You're Wrong, Admit It", start_page: 140}
+  - {title: "Chapter 4: A Drop of Honey", start_page: 147}
+  - {title: "Chapter 5: The Secret of Socrates", start_page: 155}
+  - {title: "Chapter 6: The Safety Valve in Handling Complaints", start_page: 161}
+  - {title: "Chapter 7: How to Get Cooperation", start_page: 166}
+  - {title: "Chapter 8: A Formula That Will Work Wonders for You", start_page: 171}
+  - {title: "Chapter 9: What Everybody Wants", start_page: 177}
+  - {title: "Chapter 10: An Appeal That Everybody Likes", start_page: 184}
+  - {title: "Chapter 11: The Movies Do It. TV Does It. Why Don't You Do It?", start_page: 189}
+  - {title: "Chapter 12: When Nothing Else Works, Try This", start_page: 193}
+  - {title: "Part Four: Be a Leader. How to Change People Without Giving Offense or Arousing Resentment. Chapter 1: If You Must Find Fault, This Is the Way to Begin", start_page: 197}
+  - {title: "Chapter 2: How to Criticize, and Not Be Hated for It", start_page: 204}
+  - {title: "Chapter 3: Talk About Your Own Mistakes First", start_page: 208}
+  - {title: "Chapter 4: No One Likes to Take Orders", start_page: 213}
+  - {title: "Chapter 5: Let the Other Person Save Face", start_page: 216}
+  - {title: "Chapter 6: How to Spur People On to Success", start_page: 220}
+  - {title: "Chapter 7: Give a Dog a Good Name", start_page: 226}
+  - {title: "Chapter 8: Make the Fault Seem Easy to Correct", start_page: 230}
+  - {title: "Chapter 9: Making People Glad to Do What You Want", start_page: 234}
+  - {title: "A Shortcut to Distinction, by Lowell Thomas", start_page: 240}
+  - {title: "Record Your Triumphs Here", start_page: 251, matter: back}
+  - {title: "Index", start_page: 252, matter: back}
+  - {title: "About Dale Carnegie Training", start_page: 263, matter: back}

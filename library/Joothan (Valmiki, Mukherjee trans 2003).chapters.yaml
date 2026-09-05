@@ -1,0 +1,12 @@
+# Manual chapter map for the Columbia UP English edition (209 pp). No TOC in
+# the PDF; the heuristics lumped everything after the front matter into one
+# "Foreword" chapter. The narrative itself has no chapter titles, only
+# mid-page section ornaments, so it stays one chapter rather than inventing
+# breaks at page boundaries. Pages are 1-indexed PDF pages.
+chapters:
+  - {title: "Foreword", start_page: 10}
+  - {title: "Preface to the Hindi Edition", start_page: 14}
+  - {title: "Introduction, by Arun Prabha Mukherjee", start_page: 18}
+  - {title: "References", start_page: 49, matter: back}
+  - {title: "Joothan", start_page: 50}
+  - {title: "Glossary", start_page: 206, matter: back}
