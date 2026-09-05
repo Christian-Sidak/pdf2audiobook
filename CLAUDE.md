@@ -16,6 +16,11 @@
   makes every take hallucinate a continuation preamble) and should open with
   ~0.5s of soft air (tight onsets teach clicky take starts). Prefer
   `main.py voice-distill` references: generated, clean, provably bounded.
+  **Every cloned voice needs a hand-written `voices/<name>.ref_text.txt`.**
+  The whisper fallback hallucinates over a reference's silent tail and the
+  clone then speaks that phrase as a preamble on every take. Stage 5 runs
+  `pipeline/voice_preflight.py` (transcript-vs-audio, LLM-judged canary
+  takes) before the first take and halts on failure; don't disable it.
 - **Chapter structure overrides live in `library/<book>.chapters.yaml`**
   sidecars — never hand-edit derived artifacts to fix structure.
 - Skills in `.claude/skills/` document the full workflows: `grab-voice`

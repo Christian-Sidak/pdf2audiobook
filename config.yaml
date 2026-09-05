@@ -57,6 +57,16 @@ tts:
       tempo: 1.0
       target_wpm: 130
       sentence_pause: 0.55
+  preflight:                # cloned-voice gate before the first take renders
+    enabled: true           # (pipeline/voice_preflight.py; cached per voice+transcript)
+    canaries: 3             # short public-domain takes judged like stage-5 take review
+    min_similarity: 0.60    # resemblyzer canary-vs-reference floor
+    max_wer: 0.25           # deterministic fallback when the judge LLM is unreachable
+    min_transcript_agreement: 0.8   # reference transcript vs whisper, both directions
+  speaker_similarity:       # stage-5 voice-identity gate, anchored on the clone reference
+    ref_min_long: 0.70      # takes >= 2.5s (Carnegie/Spader 2026-09-05: p1 0.79, min 0.77)
+    ref_min_short: 0.50     # 1-2.5s takes embed noisily (p1 0.57)
+    centroid_fallback_median: 0.75   # below this median the reference is too noisy; use render centroid
   collapse_guard:
     tokens_per_sec: 13.5
     cap_factor: 4.0

@@ -117,6 +117,17 @@ print(mlx_whisper.transcribe(f"voices/{name}.wav", path_or_hf_repo=WHISPER_MODEL
   pauses fall back to synthetic tone. Only chase a better tone source if the user
   asked for authentic room tone specifically.
 
+## Step 4b — Write the transcript sidecar (mandatory)
+
+Write `voices/<name>.ref_text.txt` by hand with the exact words spoken in the
+banked reference, using the whisper transcript as a starting point but
+correcting it by ear. Do NOT leave this to the engine's whisper fallback: on
+a reference with trailing air, whisper invents a phrase over the silence, and
+a transcript that claims words the audio lacks makes the clone speak them as
+a preamble on every take (Carnegie/Spader 2026-09-04, 13 hours lost). Stage 5
+now runs a preflight (`pipeline/voice_preflight.py`) that halts a build on
+this, but the sidecar is what makes it pass.
+
 ## Step 5 — Report
 
 Tell the user: source video (title + URL), the window used, the QC transcript

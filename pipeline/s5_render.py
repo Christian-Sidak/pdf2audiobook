@@ -15,7 +15,7 @@ from pathlib import Path
 import numpy as np
 
 from evals.contracts import ARTIFACT_FILES, BookCtx, Violation
-from pipeline.config import DEFAULT_ENGINE, SAMPLE_RATE, TTS_BATCH, TTS_ENGINES
+from pipeline.config import CFG, DEFAULT_ENGINE, SAMPLE_RATE, TTS_BATCH, TTS_ENGINES
 
 
 class KokoroEngine:
@@ -87,15 +87,22 @@ class Qwen3TTSEngine:
             self.model = Qwen3TTSModel.from_pretrained(self.MODEL_ID)
 
         ref_text = params.get("ref_text")
+        self._ref_text_source = "param" if ref_text else None
         if not ref_text:
             # Non-English references (Czech, Arabic, ...) must carry their own
             # text: the auto-transcribe path below is an English-only model.
             sidecar = ref_path.with_suffix(".ref_text.txt")
             if sidecar.exists():
                 ref_text = sidecar.read_text().strip()
+                self._ref_text_source = "sidecar"
         if not ref_text:
+            # Last resort, and the preflight treats it with suspicion: whisper
+            # hallucinates over a reference's silent tail, and a transcript
+            # that claims words the audio lacks makes the clone speak them as
+            # a preamble on EVERY take (Carnegie/Spader, 2026-09-04).
             from evals.audioutil import transcribe
             ref_text = transcribe(ref_path).strip()
+            self._ref_text_source = "whisper"
         self._ref_text = ref_text
 
         # Room-tone source: the reference RECORDING's real air, not the
@@ -173,6 +180,16 @@ def hot_ending(audio: np.ndarray, tail_ms: float = 60.0) -> bool:
     tail_rms = float(np.sqrt((audio[-n_tail:] ** 2).mean()))
     body_rms = float(np.sqrt((audio ** 2).mean())) or 1e-9
     return tail_rms > float(_GUARD.get("end_decay_ratio", 0.35)) * body_rms
+
+
+def _make_engine_checked(name: str, params: dict):
+    """Engine for a book render: a cloned voice must pass its preflight
+    (transcript-vs-audio, judged canary takes) before the first take."""
+    engine = _make_engine(name, params)
+    if name == "qwen3tts" and (CFG.get("tts", {}).get("preflight") or {}).get("enabled", True):
+        from pipeline.voice_preflight import preflight
+        preflight(engine, params)  # raises VoicePreflightError: stage halts
+    return engine
 
 
 def _make_engine(name: str, params: dict):
@@ -310,7 +327,7 @@ def _render(book: BookCtx, only_segments: set[str] | None = None,
         if not wav_path.exists() and not any(p[0] == wav_path for p in pending):
             pending.append((wav_path, seg["text"]))
     if pending and batch_size > 1:
-        probe = _make_engine(engine_name, params)
+        probe = _make_engine_checked(engine_name, params)
         if hasattr(probe, "synthesize_batch"):
             engine = probe
             done = 0
@@ -337,7 +354,7 @@ def _render(book: BookCtx, only_segments: set[str] | None = None,
         wav_path = render_dir / "segments" / f"{h}.wav"
         if not wav_path.exists():
             if engine is None:
-                engine = _make_engine(engine_name, params)
+                engine = _make_engine_checked(engine_name, params)
             audio = engine.synthesize(seg["text"])
             # Collapse escape: a take far beyond expected length is babble;
             # one fresh sampling path almost always leaves the basin.
@@ -421,14 +438,24 @@ def retry(book: BookCtx, feedback: list[Violation]) -> Path:
     book.config["_render_attempt"] = attempt
     jitter = 0.02 * (attempt - 1)
 
-    if attempt >= int(_GUARD.get("adjudicate_after", 2)):
+    # Per-segment failure counts: a take that failed once is usually a bad
+    # roll and just needs re-rendering; only a segment that keeps failing is
+    # "stubborn" and earns the adjudicator's text edit (the one sanctioned
+    # rewrite of an author's prose). Keyed by attempt alone, attempt 2 would
+    # rewrite every first-time failure in the book.
+    fails: dict = book.config.setdefault("_seg_fail_counts", {})
+    for sid in bad:
+        fails[sid] = fails.get(sid, 0) + 1
+    stubborn = {sid for sid in bad if fails[sid] >= int(_GUARD.get("adjudicate_after", 2))}
+
+    if stubborn:
         narration_path = book.artifacts_dir / ARTIFACT_FILES["narration"]
         narration = json.loads(narration_path.read_text(encoding="utf-8"))
         notes_by_seg = {v.unit_id: v.message for v in feedback if v.unit_id}
         model = book.config.get("rewrite_model") or CFG["narration"]["rewrite_model"]
         changed = 0
         for seg in narration["segments"]:
-            if seg["id"] in bad:
+            if seg["id"] in stubborn:
                 new_text = _adjudicate(seg, notes_by_seg.get(seg["id"], ""), model)
                 if new_text and new_text != seg["text"]:
                     seg["text"] = new_text

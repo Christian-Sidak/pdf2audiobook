@@ -52,8 +52,15 @@ Stage 5 gets a 4-attempt budget; failures feed back as re-renders, and from
 attempt 2 stubborn takes get their text adjudicated for speakability by the
 local LLM. Know the failure classes:
 
-- Reported violation lists are truncated to 25 per dimension — a pinned
-  count across attempts usually means a deeper backlog, not the same takes.
+- Attempt summaries show TRUE violation counts per dimension and the retry
+  loop is fed every fixable violation (the old 25-per-dimension cap made a
+  14%-failure book unclearable; removed 2026-09-05). Expect attempt 1 to
+  feed hundreds back on a long book; the count should fall steeply each
+  attempt. A count that does not fall is a systematic fault (voice, text),
+  not a backlog. The review queue and console still list at most 10 per
+  dimension for readability.
+- Text adjudication (the sanctioned rewrite for stubborn takes) now fires
+  per segment after its second failure, not for every failure on attempt 2.
 - **Whisper false positives**: homophones ("forefeet" heard "four feet"),
   proper nouns, foreign words. Verify by listening, not by transcript.
 - **Onset artifacts (blob-then-gap)**: snip, don't re-roll — detect the

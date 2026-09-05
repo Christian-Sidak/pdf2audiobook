@@ -123,7 +123,11 @@ def take_review(doc: DocSpec, art: ArtifactSet, cfg: dict) -> CheckResult:
         return CheckResult.failed("take_review", 5, [Violation(
             message=f"{errors} takes could not be reviewed (Ollama unreachable?)")], **details)
     if violations:
-        return CheckResult.failed("take_review", 5, violations[:25], total=len(violations), **details)
+        # Full list: the retry loop re-renders exactly what is returned here.
+        # Capping at 25 made a 14%-failure book unclearable in four attempts
+        # (Carnegie 2026-09-05). Display and the review queue truncate on
+        # their own.
+        return CheckResult.failed("take_review", 5, violations, total=len(violations), **details)
     return CheckResult.passed("take_review", 5, **details)
 
 
@@ -148,7 +152,7 @@ def sec_per_char_outlier(doc: DocSpec, art: ArtifactSet, cfg: dict) -> CheckResu
                 message=f"{v:.3f}s/char (median {med:.3f}): truncated or looping audio",
                 unit_id=r["segment_id"], fixable=True))
     if violations:
-        return CheckResult.failed("sec_per_char_outlier", 5, violations[:20],
+        return CheckResult.failed("sec_per_char_outlier", 5, violations,
                                   total=len(violations), median=round(med, 4))
     return CheckResult.passed("sec_per_char_outlier", 5, median=round(med, 4))
 
@@ -227,7 +231,7 @@ def start_artifact_shape(doc: DocSpec, art: ArtifactSet, cfg: dict) -> CheckResu
                         f"{s2 - e1:.2f}s gap before speech",
                 unit_id=r["segment_id"], fixable=True))
     if violations:
-        return CheckResult.failed("start_artifact_shape", 5, violations[:25],
+        return CheckResult.failed("start_artifact_shape", 5, violations,
                                   total=len(violations))
     return CheckResult.passed("start_artifact_shape", 5, checked=len(_rows(art)))
 
@@ -236,12 +240,18 @@ def start_artifact_shape(doc: DocSpec, art: ArtifactSet, cfg: dict) -> CheckResu
 def speaker_similarity(doc: DocSpec, art: ArtifactSet, cfg: dict) -> CheckResult:
     """Voice-identity gate: zero-shot cloning occasionally drifts to a
     different voice entirely, which every transcript- and duration-based
-    check is deaf to (same words, wrong speaker). Each take is embedded
-    (resemblyzer) and compared to the centroid of the render's own on-voice
-    majority; the centroid anchor beats the raw reference because reference
-    audio (TV/interview channel) depresses all scores equally. Measured on a
-    1,547-take render: median ref-similarity 0.877 with a drifted tail below
-    0.6. Short takes embed noisily and get a lower bar."""
+    check is deaf to (same words, wrong speaker).
+
+    Each take is embedded (resemblyzer, cached by audio hash so a take is
+    embedded once for the life of the build) and compared to the CLONE
+    REFERENCE the render was made from. Calibrated on the Carnegie/Spader
+    render 2026-09-05 against a distilled reference: long takes median 0.89,
+    1st percentile 0.79, min 0.77; 1-2.5s takes 1st percentile 0.57. A raw
+    interview reference (TV channel, room) depresses every score, so when the
+    render's median reference-similarity is poor the check falls back to the
+    render's own on-voice centroid, the pre-2026-09-05 method. Short takes
+    embed noisily and get a lower bar; sub-second takes are skipped (the
+    embedding window is ~1.6s)."""
     import numpy as np
 
     try:
@@ -250,52 +260,86 @@ def speaker_similarity(doc: DocSpec, art: ArtifactSet, cfg: dict) -> CheckResult
         return CheckResult.skipped("speaker_similarity", 5, "resemblyzer not installed")
     import soundfile as sf
 
+    from evals.audioutil import _file_hash
+    from pipeline.config import CFG, ROOT
+
+    scfg = dict(CFG.get("tts", {}).get("speaker_similarity") or {})
+    min_long = float(scfg.get("ref_min_long", 0.70))
+    min_short = float(scfg.get("ref_min_short", 0.50))
+    fallback_median = float(scfg.get("centroid_fallback_median", 0.75))
+    cache_dir = REVIEW_CACHE.parent / "speaker_emb"
+    cache_dir.mkdir(parents=True, exist_ok=True)
+
     rows = [r for r in _rows(art) if (art.book_dir / r["wav"]).exists()]
     if len(rows) < 20:
-        return CheckResult.skipped("speaker_similarity", 5, "too few takes for a centroid")
-    enc = VoiceEncoder(verbose=False)
+        return CheckResult.skipped("speaker_similarity", 5, "too few takes")
+    enc = None
+
+    def embed(path):
+        nonlocal enc
+        key = _file_hash(path)
+        c = cache_dir / f"{key}.npy"
+        if c.exists():
+            return np.load(c)
+        if enc is None:
+            enc = VoiceEncoder(verbose=False)
+        e = enc.embed_utterance(preprocess_wav(str(path)))
+        np.save(c, e)
+        return e
+
     embs, durs = {}, {}
     for r in rows:
         p = art.book_dir / r["wav"]
         try:
-            embs[r["segment_id"]] = enc.embed_utterance(preprocess_wav(str(p)))
+            embs[r["segment_id"]] = embed(p)
             durs[r["segment_id"]] = sf.info(str(p)).duration
         except Exception:
             continue
     if len(embs) < 20:
         return CheckResult.skipped("speaker_similarity", 5, "embedding failures")
-    mat = np.stack(list(embs.values()))
-    c = mat.mean(0)
-    c /= np.linalg.norm(c)
-    sims = {sid: float(np.dot(c, e)) for sid, e in embs.items()}
-    # Robust re-centroid on the clear majority, in case the first pass was
-    # dragged by a large drifted tail.
-    keep = [embs[s] for s, v in sims.items() if v >= np.median(list(sims.values()))]
-    c = np.mean(keep, axis=0)
-    c /= np.linalg.norm(c)
-    sims = {sid: float(np.dot(c, e)) for sid, e in embs.items()}
+
+    # Anchor: the clone reference from the manifest params.
+    manifest = json.loads((art.book_dir / "05_render" / "manifest.json").read_text())
+    ref = (manifest.get("params") or {}).get("reference_wav")
+    ref_path = None
+    if ref:
+        ref_path = Path(ref) if Path(ref).is_absolute() else ROOT / ref
+        if not ref_path.exists():
+            ref_path = None
+    anchor = "reference"
+    if ref_path is not None:
+        ref_emb = embed(ref_path)
+        sims = {sid: float(np.dot(ref_emb, e)) for sid, e in embs.items()}
+        long_sims = [v for s, v in sims.items() if durs.get(s, 0) >= 2.5]
+        if long_sims and float(np.median(long_sims)) < fallback_median:
+            anchor = "centroid"  # raw/noisy reference depresses everything
+    else:
+        anchor = "centroid"
+    if anchor == "centroid":
+        mat = np.stack(list(embs.values()))
+        c = mat.mean(0)
+        c /= np.linalg.norm(c)
+        sims = {sid: float(np.dot(c, e)) for sid, e in embs.items()}
+        keep = [embs[s] for s, v in sims.items() if v >= np.median(list(sims.values()))]
+        c = np.mean(keep, axis=0)
+        c /= np.linalg.norm(c)
+        sims = {sid: float(np.dot(c, e)) for sid, e in embs.items()}
+        min_long, min_short = 0.75, 0.60  # ear-validated centroid bars (2026-08)
 
     violations = []
     for sid, v in sims.items():
-        # Ear-validated on the 2026-08 Carnegie render: a 13s take at centroid
-        # similarity 0.71 was a confirmed wrong voice, so the bar sits at 0.75;
-        # clean takes clustered at 0.79+. Retaking a borderline good take is
-        # cheap; shipping a voice swap is not.
-        # Below ~1s the resemblyzer embedding is noise (its partials window is
-        # ~1.6s), so sub-second takes can never pass any bar: skip them —
-        # take_review still covers their content (Tsavo 2026-08-26: nine
-        # eternal "voice drift" flags were all 0.2-1.0s fragments).
-        if durs.get(sid, 0) < 1.0:
+        d = durs.get(sid, 0)
+        if d < 1.0:
             continue
-        thresh = 0.75 if durs.get(sid, 0) >= 2.5 else 0.60
+        thresh = min_long if d >= 2.5 else min_short
         if v < thresh:
             violations.append(Violation(
-                message=f"voice drift: similarity {v:.2f} to render's own voice "
-                        f"centroid ({durs.get(sid, 0):.1f}s take)",
+                message=f"voice drift: similarity {v:.2f} to {anchor} ({d:.1f}s take, bar {thresh})",
                 unit_id=sid, fixable=True))
-    details = {"takes": len(sims), "median": round(float(np.median(list(sims.values()))), 3)}
+    details = {"takes": len(sims), "anchor": anchor,
+               "median": round(float(np.median(list(sims.values()))), 3)}
     if violations:
-        return CheckResult.failed("speaker_similarity", 5, violations[:25],
+        return CheckResult.failed("speaker_similarity", 5, violations,
                                   total=len(violations), **details)
     return CheckResult.passed("speaker_similarity", 5, **details)
 

@@ -248,7 +248,7 @@ def faithfulness_aligned_diff(doc: DocSpec, art: ArtifactSet, cfg: dict) -> Chec
 
     details = {"ambiguous_pairs": len(ambiguous), "not_narrated": skipped_chapters}
     if violations:
-        return CheckResult.failed("faithfulness_aligned_diff", 4, violations[:25],
+        return CheckResult.failed("faithfulness_aligned_diff", 4, violations,
                                   total=len(violations), **details)
     return CheckResult.passed("faithfulness_aligned_diff", 4, **details)
 
