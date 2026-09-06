@@ -191,8 +191,10 @@ def book_progress(bdir: Path) -> dict:
     # Phase and overall fraction (weights: script 10%, render 85%, master 5%)
     if log["done"] or (m4b.exists() and not alive and takes >= seg_total > 0):
         phase, frac = "done", 1.0
-    elif log["stage"] == 6 or (narr.exists() and seg_total and takes >= seg_total and alive):
+    elif log["stage"] == 6:
         phase, frac = "mastering", 0.95
+    elif narr.exists() and seg_total and takes >= seg_total and alive:
+        phase, frac = "checking takes", 0.93  # stage-5 QC on a complete pass, or re-rolls
     elif narr.exists() and (log["stage"] == 5 or takes):
         phase, frac = "rendering", 0.10 + 0.85 * (takes / seg_total if seg_total else 0)
     elif log["stage"] == 4 or prog.exists() or (stages_on_disk and "04" not in stages_on_disk and "03" in stages_on_disk):
