@@ -21,7 +21,7 @@ def _segment_texts(art: ArtifactSet) -> dict[str, str]:
 
 
 REVIEW_CACHE = Path(__file__).resolve().parent.parent / ".cache" / "take_review"
-REVIEW_PROMPT_VERSION = "v1"
+REVIEW_PROMPT_VERSION = "v2"  # v2: per-book known-terms block
 
 REVIEW_SCHEMA = {
     "type": "object",
@@ -54,6 +54,7 @@ Do NOT flag transcription formatting differences. These are normal ASR behavior,
 errors: numbers as digits vs words ('204' vs 'two hundred four'), punctuation, capitalization, \
 contractions ('do not' vs 'don't'), homophones, and misspelled proper nouns or foreign words \
 (Whisper guesses spellings). Judge only whether the spoken audio matched the source.
+{terms}
 
 SOURCE:
 {source}
@@ -64,25 +65,103 @@ TRANSCRIPT:
 Return JSON: {{"verdict": "pass"|"retake", "issues": [...], "reason": "one short sentence"}}"""
 
 
-def _review_take(source: str, transcript: str, model: str) -> dict:
-    """Qwen verdict on one take, disk-cached by (prompt, model, source, transcript)."""
+def _review_take(source: str, transcript: str, model: str, terms: str = "") -> dict:
+    """Qwen verdict on one take, disk-cached by (prompt, model, terms, source, transcript)."""
     import hashlib
 
     from pipeline.ollama_client import chat_json
 
     key = hashlib.sha256(
-        f"{REVIEW_PROMPT_VERSION}|{model}|{source}|{transcript}".encode()).hexdigest()[:24]
+        f"{REVIEW_PROMPT_VERSION}|{model}|{terms}|{source}|{transcript}".encode()).hexdigest()[:24]
     cache = REVIEW_CACHE / f"{key}.json"
     if cache.exists():
         return json.loads(cache.read_text())
     result = chat_json(model, [{"role": "user", "content": REVIEW_PROMPT.format(
-        source=source, transcript=transcript)}], REVIEW_SCHEMA,
+        source=source, transcript=transcript, terms=terms)}], REVIEW_SCHEMA,
         temperature=0.0, num_ctx=4096)
     if result.get("verdict") not in ("pass", "retake"):
         result = {"verdict": "pass", "issues": [], "reason": "malformed review, not counted"}
     REVIEW_CACHE.mkdir(parents=True, exist_ok=True)
     cache.write_text(json.dumps(result))
     return result
+
+
+def book_terms(art: ArtifactSet, limit: int = 200) -> list[str]:
+    """Names and foreign terms this book uses that a dictionary does not
+    know: capitalized tokens, or lowercase tokens that recur, absent from
+    the word list. Whisper misspells or substitutes these ("Joothan" ->
+    "Jhut Hanh", "Dalit" -> "delete", "Ambedkar" -> "Amrit Kaur") and the
+    judge read them as TTS substitutions: half of Joothan's residual flags
+    (2026-09-06). Deterministic; the list only informs the LLM's judgment."""
+    import re
+    from collections import Counter
+
+    from pipeline.textquality import _dictionary, is_word
+
+    d = _dictionary()
+    counts: Counter = Counter()
+    capped: Counter = Counter()
+    for ch in art.chapters["chapters"]:
+        if ch.get("matter", "body") != "body":
+            continue
+        for tok in re.findall(r"[A-Za-z][A-Za-z-]{2,}", ch.get("text", "")):
+            low = tok.lower().strip("-")
+            if not low or is_word(low, d):
+                continue
+            counts[low] += 1
+            if tok[:1].isupper():
+                capped[low] += 1
+    # Names: capitalized in most occurrences (sentence-initial common words
+    # like "Women" are not). Foreign terms: lowercase, recurring. The system
+    # word list lacks irregular forms ("became", "began"), so a few common
+    # words leak into the lowercase set; harmless as prompt context.
+    names = [t for t, n in counts.most_common() if capped[t] >= 0.6 * n]
+    terms = [t for t, n in counts.most_common() if capped[t] < 0.6 * n and n >= 3]
+    out = [t.capitalize() for t in names] + terms
+    return out[:limit]
+
+
+def _norm_tokens(text: str) -> list[str]:
+    """Tokens for a tolerance diff: casefold, hyphens to spaces, apostrophes
+    and punctuation dropped, digits and number words blinded."""
+    import re
+
+    from evals.checks.s4_narration import _numeric_blind
+    t = _numeric_blind(text).lower().replace("-", " ").replace("’", "").replace("'", "")
+    return [w for w in re.findall(r"[a-z]+", t) if w not in ("and",)]
+
+
+def tolerable_diff(source: str, transcript: str, terms: set[str]) -> bool:
+    """Deterministic pass in front of the judge. True when the transcript
+    equals the source after normalization, or differs only where a known
+    name or term stands in the source (whisper rewrites "Joothan" as "Jhut
+    Hanh" and "Dalit" as "delete"). Missing or added words that are not
+    terms, and any deletion, go to the judge. The judge model ignored its
+    own tolerance rules on capitalization, hyphens, and possessives
+    (Joothan 2026-09-06: 55 of 70 residual flags), so this makes those
+    cases mechanical."""
+    import difflib
+    a, b = _norm_tokens(source), _norm_tokens(transcript)
+    if a == b:
+        return True
+    if not a or not b:
+        return False
+    sm = difflib.SequenceMatcher(a=a, b=b, autojunk=False)
+    for tag, i1, i2, j1, j2 in sm.get_opcodes():
+        if tag == "equal":
+            continue
+        if tag == "replace" and all(w in terms for w in a[i1:i2]) and (j2 - j1) <= 2 * (i2 - i1) + 1:
+            continue
+        return False
+    return True
+
+
+def _terms_block(terms: list[str]) -> str:
+    if not terms:
+        return ""
+    return ("KNOWN NAMES AND TERMS IN THIS BOOK (Whisper will misspell, split, or substitute "
+            "these; a mismatch on one of them is a transcription artifact, NOT a TTS error, "
+            "unless the word is missing outright): " + ", ".join(terms))
 
 
 @check(stage=5, dimension="take_review", deterministic=False)
@@ -98,6 +177,13 @@ def take_review(doc: DocSpec, art: ArtifactSet, cfg: dict) -> CheckResult:
 
     texts = _segment_texts(art)
     rows = _rows(art)
+    try:
+        term_list = book_terms(art)
+    except Exception:
+        term_list = []
+    terms = _terms_block(term_list)
+    term_set = {t.lower() for t in term_list}
+    tolerated = 0
     violations = []
     counts: dict[str, int] = {}
     errors = 0
@@ -106,8 +192,11 @@ def take_review(doc: DocSpec, art: ArtifactSet, cfg: dict) -> CheckResult:
         if len(source.strip()) < 3:
             continue
         transcript = transcribe(art.book_dir / r["wav"]).strip()
+        if tolerable_diff(source, transcript, term_set):
+            tolerated += 1
+            continue
         try:
-            review = _review_take(source, transcript, JUDGE_MODEL)
+            review = _review_take(source, transcript, JUDGE_MODEL, terms)
         except OllamaError:
             errors += 1
             continue
@@ -118,7 +207,7 @@ def take_review(doc: DocSpec, art: ArtifactSet, cfg: dict) -> CheckResult:
                 message=f"{','.join(review.get('issues', []))}: {review.get('reason', '')[:120]} "
                         f"| source {source[:60]!r} heard {transcript[:60]!r}",
                 unit_id=r["segment_id"], fixable=True))
-    details = {"checked": len(rows), "issue_counts": counts, "review_errors": errors}
+    details = {"checked": len(rows), "tolerated": tolerated, "issue_counts": counts, "review_errors": errors}
     if errors and errors > len(rows) // 10:
         return CheckResult.failed("take_review", 5, [Violation(
             message=f"{errors} takes could not be reviewed (Ollama unreachable?)")], **details)
