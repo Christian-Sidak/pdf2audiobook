@@ -205,6 +205,31 @@ def book_progress(bdir: Path) -> dict:
                   "transcribed": min(tr, seg_total), "judged": min(jd, seg_total), "embedded": min(em, seg_total)}
 
     m4b = OUTPUT_DIR / bdir.name / "book.m4b"
+    # Stage-6 sub-phase from disk: the M4B grows during the AAC encode (size
+    # vs the expected bytes for the program length at the delivery bitrate),
+    # then chapter files appear one by one, then the export.
+    asm_sub = None
+    if alive and log["stage"] == 6 and not log["done"]:
+        try:
+            rows = json.loads((bdir / "05_render" / "manifest.json").read_text(encoding="utf-8"))["segments"]
+            program_s = sum(r.get("duration_s", 0) for r in rows) * 1.10  # takes + pauses
+        except Exception:
+            program_s = 0
+        expected = program_s * 12000  # 96 kbit/s AAC
+        chdir = OUTPUT_DIR / bdir.name / "chapters"
+        try:
+            n_ch = sum(1 for c in json.loads((bdir / "03_chapters.json").read_text(encoding="utf-8"))["chapters"]
+                       if c.get("matter", "body") == "body")
+        except Exception:
+            n_ch = 0
+        ch_files = [f for f in chdir.glob("*.m4a") if f.stat().st_mtime > now - 6 * 3600] if chdir.exists() else []
+        m4b_fresh = m4b.exists() and m4b.stat().st_mtime > now - 6 * 3600
+        if ch_files:
+            asm_sub = {"step": "writing chapter files", "done": len(ch_files), "total": n_ch or len(ch_files)}
+        elif m4b_fresh and expected:
+            asm_sub = {"step": "encoding M4B", "done": int(min(1.0, m4b.stat().st_size / expected) * 100), "total": 100}
+        else:
+            asm_sub = {"step": "laying takes onto the tone bed and measuring loudness", "done": 0, "total": 0}
     icloud = None
     if ICLOUD.exists() and m4b.exists():
         for p in ICLOUD.glob("*.m4b"):
@@ -216,6 +241,8 @@ def book_progress(bdir: Path) -> dict:
         phase, frac = "done", 1.0
     elif log["stage"] == 6:
         phase, frac = "mastering", 0.95
+        if asm_sub and asm_sub.get("total"):
+            frac = 0.95 + 0.05 * (asm_sub["done"] / asm_sub["total"])
     elif narr.exists() and seg_total and takes >= seg_total and alive:
         phase, frac = "checking takes", 0.93  # stage-5 QC on a complete pass, or re-rolls
     elif narr.exists() and (log["stage"] == 5 or takes):
@@ -242,6 +269,7 @@ def book_progress(bdir: Path) -> dict:
                    "eta_hours": round(eta_h, 2) if eta_h is not None else None,
                    "last_take": last_take},
         "qc": {"attempts": log["attempts"], "halted": log["halted"], "sub": qc_sub},
+        "sub": qc_sub or asm_sub,
         "output": {"m4b": str(m4b) if m4b.exists() else None,
                    "m4b_mtime": m4b.stat().st_mtime if m4b.exists() else None,
                    "icloud": icloud},
@@ -280,6 +308,7 @@ async function load(){const r=await fetch("/api");const rows=await r.json();docu
 document.getElementById("books").innerHTML=rows.map(b=>{const pct=Math.round(b.fraction*100);const rr=b.render,sc=b.script;
 let detail="";if(b.phase.includes("script"))detail=`script: ${sc.windows_done}/${sc.windows_total} windows`;
 else if(b.qc.sub){const q=b.qc.sub;detail=`QC: ${q.step} ${q.done.toLocaleString()}/${q.total.toLocaleString()} <span class="muted">(transcribed ${q.transcribed.toLocaleString()} · judged ${q.judged.toLocaleString()} · embedded ${q.embedded.toLocaleString()})</span>`}
+else if(b.sub){const q=b.sub;detail=`assembly: ${q.step}`+(q.total?` ${q.done}/${q.total}`+(q.total===100?"%":""):"")}
 else if(rr.segments)detail=`takes ${rr.takes.toLocaleString()}/${rr.segments.toLocaleString()}`+(rr.pace_per_hour?` · ${rr.pace_per_hour}/h · ETA ${fmtEta(rr.eta_hours)}`:"");
 const qc=b.qc.attempts.length?`<table><tr><th>stage</th><th>attempt</th><th>flags</th><th>by check</th></tr>`+b.qc.attempts.map(a=>`<tr><td>${a.stage}</td><td>${a.attempt}</td><td>${a.total}</td><td class="muted">${Object.entries(a.flags).map(([k,v])=>k+" "+v).join(", ")}</td></tr>`).join("")+`</table>`:"";
 const out=b.output.m4b?`<div class="muted">M4B ${new Date(b.output.m4b_mtime*1000).toLocaleString()}${b.output.icloud?" · in iCloud":""}</div>`:"";
