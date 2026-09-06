@@ -180,13 +180,36 @@ def book_progress(bdir: Path) -> dict:
             if pace and seg_total > takes:
                 eta_h = (seg_total - takes) / pace
 
+    # QC sub-phase during stage-5 checks: the checks print nothing until they
+    # finish, but each leaves one cache file per take. Count entries written
+    # since this render's last take (transcripts, verdicts, embeddings) to
+    # show which check is running and how far along it is.
+    alive = _alive(bdir)
+    qc_sub = None
+    if narr.exists() and seg_total and takes >= seg_total and alive and last_take and log["stage"] == 5:
+        cache_root = ARTIFACTS_DIR.parent / "evals" / ".cache"
+        def _since(sub: str) -> int:
+            d = cache_root / sub
+            if not d.exists():
+                return 0
+            t = last_take - 1
+            return sum(1 for e in os.scandir(d) if e.stat().st_mtime >= t)
+        tr, jd, em = _since("asr"), _since("take_review"), _since("speaker_emb")
+        if em and em >= min(tr, jd):
+            step = "embedding voices"; n = em
+        elif jd and jd >= tr * 0.9:
+            step = "judging transcripts"; n = jd
+        else:
+            step = "transcribing takes"; n = tr
+        qc_sub = {"step": step, "done": min(n, seg_total), "total": seg_total,
+                  "transcribed": min(tr, seg_total), "judged": min(jd, seg_total), "embedded": min(em, seg_total)}
+
     m4b = OUTPUT_DIR / bdir.name / "book.m4b"
     icloud = None
     if ICLOUD.exists() and m4b.exists():
         for p in ICLOUD.glob("*.m4b"):
             if abs(p.stat().st_size - m4b.stat().st_size) < 1024 * 1024:
                 icloud = p.name
-    alive = _alive(bdir)
 
     # Phase and overall fraction (weights: script 10%, render 85%, master 5%)
     if log["done"] or (m4b.exists() and not alive and takes >= seg_total > 0):
@@ -218,7 +241,7 @@ def book_progress(bdir: Path) -> dict:
         "render": {"takes": takes, "segments": seg_total, "pace_per_hour": pace,
                    "eta_hours": round(eta_h, 2) if eta_h is not None else None,
                    "last_take": last_take},
-        "qc": {"attempts": log["attempts"], "halted": log["halted"]},
+        "qc": {"attempts": log["attempts"], "halted": log["halted"], "sub": qc_sub},
         "output": {"m4b": str(m4b) if m4b.exists() else None,
                    "m4b_mtime": m4b.stat().st_mtime if m4b.exists() else None,
                    "icloud": icloud},
@@ -256,6 +279,7 @@ function cls(p){return p.startsWith("done")?"done":p.startsWith("halted")?"halte
 async function load(){const r=await fetch("/api");const rows=await r.json();document.getElementById("ts").textContent="updated "+new Date().toLocaleTimeString();
 document.getElementById("books").innerHTML=rows.map(b=>{const pct=Math.round(b.fraction*100);const rr=b.render,sc=b.script;
 let detail="";if(b.phase.includes("script"))detail=`script: ${sc.windows_done}/${sc.windows_total} windows`;
+else if(b.qc.sub){const q=b.qc.sub;detail=`QC: ${q.step} ${q.done.toLocaleString()}/${q.total.toLocaleString()} <span class="muted">(transcribed ${q.transcribed.toLocaleString()} · judged ${q.judged.toLocaleString()} · embedded ${q.embedded.toLocaleString()})</span>`}
 else if(rr.segments)detail=`takes ${rr.takes.toLocaleString()}/${rr.segments.toLocaleString()}`+(rr.pace_per_hour?` · ${rr.pace_per_hour}/h · ETA ${fmtEta(rr.eta_hours)}`:"");
 const qc=b.qc.attempts.length?`<table><tr><th>stage</th><th>attempt</th><th>flags</th><th>by check</th></tr>`+b.qc.attempts.map(a=>`<tr><td>${a.stage}</td><td>${a.attempt}</td><td>${a.total}</td><td class="muted">${Object.entries(a.flags).map(([k,v])=>k+" "+v).join(", ")}</td></tr>`).join("")+`</table>`:"";
 const out=b.output.m4b?`<div class="muted">M4B ${new Date(b.output.m4b_mtime*1000).toLocaleString()}${b.output.icloud?" · in iCloud":""}</div>`:"";
